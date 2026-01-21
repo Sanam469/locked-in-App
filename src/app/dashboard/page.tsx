@@ -11,6 +11,7 @@ import {
   Cpu,
   Key,
   Globe,
+  ChevronRight,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -33,14 +34,10 @@ export default function DashboardPage() {
       const api = (window as any).electronAPI;
       if (!api) return;
 
-      // 1. Get the email from local storage
       const savedEmail = localStorage.getItem("warden_user_email");
 
       if (savedEmail) {
-        // 2. Tell the main process to set global.currentUserId based on this email
         await api.syncSession(savedEmail);
-
-        // 3. Now that the session is synced, fetch the stats
         const result = await api.getDailyStats();
         if (result?.success) {
           setTodayMinutes(result.minutes || 0);
@@ -191,7 +188,7 @@ export default function DashboardPage() {
             {todayMinutes} MINS ENFORCED
           </div>
         </div>
-        <div className="h-1.5 w-full bg-slate-200 border border-slate-300 rounded-full overflow-hidden">
+        <div className="h-1.5 w-full bg-slate-200 border dynamic-border rounded-full overflow-hidden">
           <div
             className="h-full bg-blue-600 transition-all duration-1000"
             style={{ width: `${progressPercent}%` }}
@@ -199,9 +196,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-12 gap-0 border-t border-white">
+      <div className="grid grid-cols-12 gap-0 border-t dynamic-border">
         {/* CLEAN SIDEBAR */}
-        <aside className="col-span-12 lg:col-span-3 pr-10 border-r border-white pt-12 space-y-16">
+        <aside className="col-span-12 lg:col-span-3 pr-10 border-r dynamic-border pt-12 space-y-16">
           <div className="space-y-10 text-xs font-bold uppercase">
             <h3 className="text-sm font-black text-slate-400 tracking-[0.3em]">
               Hardware Health
@@ -219,7 +216,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="space-y-4 pt-10 border-t border-white/10">
+          <div className="space-y-4 pt-10 border-t dynamic-border">
             <div className="flex items-center gap-3">
               <Smartphone size={18} className="text-blue-600" />
               <span className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">
@@ -231,22 +228,57 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <section className="pt-10 border-t border-white/10">
-            <div className="flex items-center gap-3 mb-6">
-              <Terminal size={12} className="text-blue-600" />
-              <span className="text-[10px] text-slate-400 uppercase tracking-[0.4em] font-black">
-                Output Log
-              </span>
+          <section className="pt-10 border-t border-[var(--line-color)]">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Terminal size={14} className="text-blue-500 relative z-10" />
+                  <div className="absolute inset-0 bg-blue-600/20 blur-sm rounded-full animate-pulse" />
+                </div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-[0.4em] font-black">
+                  Kernel Output
+                </span>
+              </div>
+              {/* Live Status Indicator */}
+              <div className="flex items-center gap-2">
+                <span className="text-[8px] font-black text-blue-600/60 uppercase tracking-widest">
+                  Live Feed
+                </span>
+                <div className="w-1 h-1 bg-blue-600 rounded-full animate-ping" />
+              </div>
             </div>
-            <div className="font-mono text-[9px] space-y-3 uppercase font-bold text-slate-500">
-              {logs.map((log, i) => (
-                <p
-                  key={i}
-                  className={i === logs.length - 1 ? "text-blue-600" : ""}
-                >
-                  {log}
-                </p>
-              ))}
+
+            {/* THE SEXY TERMINAL BOX */}
+            <div className="relative group">
+              {/* Background Glass Layer */}
+              <div className="absolute -inset-2 bg-gradient-to-b from-blue-600/5 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+              <div className="relative bg-black/40 backdrop-blur-md border border-white/5 rounded-sm p-7 w-62 overflow-hidden">
+                {/* Subtle Scanline Effect */}
+                <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.02),rgba(0,255,0,0.01),rgba(0,0,255,0.02))] bg-[length:100%_4px,3px_100%] opacity-20" />
+
+                <div className="font-mono text-[9px] space-y-3 uppercase font-bold relative z-10">
+                  {logs.map((log, i) => (
+                    <div key={i} className="flex gap-3 items-start group/line">
+                      <span className="text-red-600/40 select-none">
+                        [{i + 104}]
+                      </span>
+                      <p
+                        className={`leading-relaxed transition-colors duration-300 ${
+                          i === logs.length - 1
+                            ? "text-green-600 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)]"
+                            : "text-slate-500 group-hover/line:text-slate-300"
+                        }`}
+                      >
+                        {log}
+                        {i === logs.length - 1 && (
+                          <span className="inline-block w-1.5 h-3 ml-1 bg-green-600 animate-pulse align-middle" />
+                        )}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
         </aside>
@@ -258,7 +290,7 @@ export default function DashboardPage() {
           </h4>
 
           <div className="max-w-2xl space-y-16">
-            <div className="border-b border-white pb-2 focus-within:border-blue-600 transition-all max-w-lg">
+            <div className="border-b dynamic-border pb-2 focus-within:border-blue-600 transition-all max-w-lg">
               <label className="text-[9px] font-black text-blue-600 uppercase tracking-[0.5em] block mb-2">
                 Target Session URL
               </label>
@@ -272,7 +304,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-12 gap-8 items-center bg-transparent py-4">
-              <div className="col-span-4 space-y-1 border-r border-white/10">
+              <div className="col-span-4 space-y-1 border-r dynamic-border">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">
                   {isLocked ? "Lock Time" : "Duration"}
                 </h3>
@@ -331,76 +363,143 @@ export default function DashboardPage() {
             </div>
 
             {/* ACTION ZONE: BALANCED & CLEAR */}
-            <div className="pt-10 border-t border-white/10 space-y-8">
+            {/* ACTION ZONE */}
+            <div
+              className={`pt-10 border-t border-[var(--line-color)] space-y-8 transition-all duration-700 ${
+                url.toLowerCase().startsWith("https://")
+                  ? "opacity-100"
+                  : "opacity-20 grayscale pointer-events-none"
+              }`}
+            >
+              {/* MANUAL BYPASS: ONLY CLICKS IF URL IS VALID */}
               <div
-                onClick={() =>
-                  !isLocked && setIsAuthenticated(!isAuthenticated)
-                }
-                className="flex items-center gap-3 cursor-pointer group w-fit"
+                onClick={() => {
+                  if (url.toLowerCase().startsWith("https://") && !isLocked) {
+                    setIsAuthenticated(!isAuthenticated);
+                  }
+                }}
+                className="flex items-center gap-6 cursor-pointer group w-fit select-none"
               >
-                <div
-                  className={`w-4 h-4 border-2 transition-all flex items-center justify-center ${isAuthenticated ? "border-blue-600 bg-blue-600" : "border-slate-300 group-hover:border-blue-600"}`}
-                >
-                  {isAuthenticated && (
-                    <Zap size={10} className="text-white fill-white" />
-                  )}
+                <div className="relative flex items-center justify-center w-10 h-10">
+                  <div
+                    className={`absolute inset-0 rounded-full border border-white/5 transition-all duration-700 ${isAuthenticated ? "scale-100 opacity-100" : "scale-50 opacity-0"}`}
+                  />
+
+                  <div
+                    className={`relative z-10 transition-all duration-500 ease-out flex items-center justify-center ${isAuthenticated ? "translate-x-1" : "-translate-x-1"}`}
+                  >
+                    <Zap
+                      size={18}
+                      className={`transition-all duration-500 ${
+                        isAuthenticated
+                          ? "text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.6)] fill-yellow-500"
+                          : "text-slate-700 group-hover:text-slate-500"
+                      }`}
+                    />
+                    <div className="absolute -right-4 flex flex-col gap-1">
+                      <div
+                        className={`w-2 h-[1px] transition-all duration-300 ${isAuthenticated ? "bg-yellow-500 w-4" : "bg-slate-800"}`}
+                      />
+                      <div
+                        className={`w-2 h-[1px] transition-all duration-500 ${isAuthenticated ? "bg-yellow-400 w-6" : "bg-slate-800"}`}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <span
-                  className={`text-[9px] font-black uppercase tracking-[0.2em] transition-colors ${isAuthenticated ? "text-blue-600" : "text-slate-500 group-hover:text-slate-800"}`}
-                >
-                  I am already logged into this site (Manual Override)
-                </span>
+
+                <div className="flex flex-col">
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-[0.4em] transition-colors duration-500 ${isAuthenticated ? "text-yellow-500" : "text-slate-600 group-hover:text-slate-400"}`}
+                  >
+                    Manual Bypass
+                  </span>
+                  <span className="text-[7px] text-slate-700 font-bold uppercase tracking-widest -mt-1">
+                    {isAuthenticated
+                      ? "ENCRYPTION TERMINATED"
+                      : "REQUIRES SECURE PROTOCOL (HTTPS://)"}
+                  </span>
+                </div>
               </div>
 
               <div className="flex justify-between items-center gap-8">
-                <div className="flex flex-col gap-3 flex-1">
+                <div className="flex flex-col gap-4 flex-1">
+                  {/* G-SUITE LOGIN */}
                   <button
-                    onClick={
-                      !isLocked && !isAuthenticated
-                        ? handleLoginPreparation
-                        : undefined
+                    disabled={
+                      !url.toLowerCase().startsWith("https://") ||
+                      isAuthenticated
                     }
-                    className={`flex items-center justify-between px-6 py-5 border-2 transition-all ${isAuthenticated ? "border-slate-100 bg-slate-50/50 opacity-50 cursor-not-allowed" : "border-slate-200 hover:border-gray-600 cursor-pointer"}`}
+                    onClick={handleLoginPreparation}
+                    className={`group/btn relative flex items-center justify-between px-6 py-5 transition-all duration-500 overflow-hidden ${
+                      isAuthenticated
+                        ? "bg-transparent opacity-30"
+                        : "bg-[#080808] hover:bg-[#0c0c0c] border-l border-white/5 hover:border-blue-600/50 cursor-pointer shadow-[10px_0_30px_-15px_rgba(0,0,0,1)]"
+                    }`}
                   >
-                    <div className="flex items-center gap-4">
-                      <Key
-                        size={16}
-                        className={
-                          isAuthenticated ? "text-slate-400" : "text-green-400"
-                        }
-                      />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-800">
-                        Authorize Google
-                      </span>
+                    <div className="flex items-center gap-5 relative z-10">
+                      <div
+                        className={`p-2 rounded-sm border transition-all duration-500 ${isAuthenticated ? "border-slate-800" : "border-white/5 bg-white/5"}`}
+                      >
+                        <Key
+                          size={14}
+                          className={
+                            isAuthenticated ? "text-slate-800" : "text-blue-600"
+                          }
+                        />
+                      </div>
+                      <div className="text-left">
+                        <span
+                          className={`block text-[11px] font-black uppercase tracking-[0.2em] ${isAuthenticated ? "text-slate-800" : "text-slate-200"}`}
+                        >
+                          G-Suite Authorization
+                        </span>
+                        <span className="text-[7px] text-slate-700 font-bold uppercase tracking-widest">
+                          Awaiting Protocol Verification
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
-                      {isAuthenticated ? "ACTIVE" : "PORTAL"}
-                    </span>
+                    <ChevronRight size={12} className="text-slate-800" />
                   </button>
 
+                  {/* SOCKET AUTH */}
                   <button
-                    onClick={
-                      !isLocked && !isAuthenticated ? handleUrlLogin : undefined
+                    disabled={
+                      !url.toLowerCase().startsWith("https://") ||
+                      isAuthenticated
                     }
-                    className={`flex items-center justify-between px-6 py-5 border-2 transition-all ${isAuthenticated ? "border-slate-100 bg-slate-50/50 opacity-50 cursor-not-allowed" : "border-slate-200 hover:border-gray-600 cursor-pointer"}`}
+                    onClick={handleUrlLogin}
+                    className={`group/btn relative flex items-center justify-between px-6 py-5 transition-all duration-500 overflow-hidden ${
+                      isAuthenticated
+                        ? "bg-transparent opacity-30"
+                        : "bg-[#080808] hover:bg-[#0c0c0c] border-l border-white/5 hover:border-blue-600/50 cursor-pointer shadow-[10px_0_30px_-15px_rgba(0,0,0,1)]"
+                    }`}
                   >
-                    <div className="flex items-center gap-4">
-                      <Globe
-                        size={16}
-                        className={
-                          isAuthenticated ? "text-slate-400" : "text-blue-400"
-                        }
-                      />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-800">
-                        Authorize {getDomain(url)}
-                      </span>
+                    <div className="flex items-center gap-5 relative z-10">
+                      <div
+                        className={`p-2 rounded-sm border transition-all duration-500 ${isAuthenticated ? "border-slate-800" : "border-white/5 bg-white/5"}`}
+                      >
+                        <Globe
+                          size={14}
+                          className={
+                            isAuthenticated ? "text-slate-800" : "text-blue-600"
+                          }
+                        />
+                      </div>
+                      <div className="text-left">
+                        <span
+                          className={`block text-[11px] font-black uppercase tracking-[0.2em] ${isAuthenticated ? "text-slate-800" : "text-slate-200"}`}
+                        >
+                          {getDomain(url)} Socket
+                        </span>
+                        <span className="text-[7px] text-slate-700 font-bold uppercase tracking-widest">
+                          Handshake Standby
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
-                      {isAuthenticated ? "ACTIVE" : "PORTAL"}
-                    </span>
+                    <ChevronRight size={12} className="text-slate-800" />
                   </button>
                 </div>
-
+                {/* ENGAGE BUTTON: UNTOUCHED PER INSTRUCTION */}
                 <button
                   onClick={handleInitialize}
                   disabled={!isAuthenticated || isLocked}
@@ -442,7 +541,6 @@ export default function DashboardPage() {
                       Clearance Level 4 Verified
                     </span>
                   </div>
-                  {/* Decorative Scanner Line */}
                   {isAuthenticated && !isLocked && (
                     <div className="absolute top-0 left-0 w-full h-[2px] bg-green-400/30 animate-scanline pointer-events-none" />
                   )}

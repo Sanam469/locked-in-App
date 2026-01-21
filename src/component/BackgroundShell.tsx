@@ -14,7 +14,7 @@ export default function BackgroundShell({
   return (
     <div
       className={`relative min-h-screen transition-colors duration-700 flex flex-col overflow-hidden isolate ${
-        theme === "cobalt" ? "bg-[#1e222b]" : "bg-[#0b0b0e]"
+        theme === "cobalt" ? "bg-[#1e222b]" : "bg-[#050505]"
       }`}
     >
       {/* 1. DYNAMIC BACKGROUND LAYER */}
@@ -26,14 +26,16 @@ export default function BackgroundShell({
           </>
         ) : (
           <>
+            {/* THE EFFECT: Deep Charcoal to Obsidian Sink */}
             <div
-              className="absolute inset-0 opacity-[0.15]"
+              className="absolute inset-0"
               style={{
-                backgroundImage: `linear-gradient(#222 1px, transparent 1px), linear-gradient(90deg, #222 1px, transparent 1px)`,
-                backgroundSize: "40px 40px",
+                background: `linear-gradient(to bottom, #1a1a1a 0%, #0a0a0a 40%, #050505 100%)`,
               }}
             />
-            <div className="absolute inset-x-0 top-0 h-[600px] bg-[radial-gradient(circle_at_50%_0%,rgba(234,88,12,0.1),transparent_70%)]" />
+
+            {/* Subtle Top "Glow" for Depth (No Orange) */}
+            <div className="absolute inset-x-0 top-0 h-[500px] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05),transparent_70%)]" />
           </>
         )}
       </div>
@@ -59,21 +61,20 @@ export default function BackgroundShell({
 
         .theme-cobalt {
           --accent: var(--cobalt);
-          --line-color: #000000; /* Black lines for Cobalt mode */
+          /* Very faint white for dark blue bg */
+          --line-color: rgba(255, 255, 255, 0.12);
         }
 
         .theme-warden {
           --accent: var(--warden);
-          --line-color: #ffffff; /* White lines for Warden mode */
+          /* Crisp but transparent white for black bg */
+          --line-color: rgba(255, 255, 255, 0.12);
         }
-
-        /* --- THE DYNAMIC BORDER UTILITY --- */
         .dynamic-border {
           border-color: var(--line-color) !important;
           transition: border-color 0.7s ease;
         }
 
-        /* Keep your existing visibility fixes below */
         .text-slate-900,
         .text-slate-800,
         .text-blue-950,
@@ -93,7 +94,6 @@ export default function BackgroundShell({
           color: var(--accent) !important;
         }
 
-        /* --- ANIMATIONS & SCROLLBAR --- */
         @keyframes slowWave {
           0% {
             transform: translate(-5%, -5%) rotate(0deg);
@@ -112,8 +112,8 @@ export default function BackgroundShell({
         @keyframes pageIn {
           from {
             opacity: 0;
-            filter: blur(12px); /* Content starts out of focus */
-            transform: scale(0.99) translateY(10px); /* Slight lift effect */
+            filter: blur(12px);
+            transform: scale(0.99) translateY(10px);
           }
           to {
             opacity: 1;
@@ -123,11 +123,9 @@ export default function BackgroundShell({
         }
 
         .animate-pageIn {
-          /* Increased to 1s with a 'Quartz' ease for a premium feel */
           animation: pageIn 1000ms cubic-bezier(0.19, 1, 0.22, 1) both;
         }
 
-        /* 2. ENSURE CONTENT SITS ABOVE THE WAVES */
         main {
           will-change: transform, opacity, filter;
         }

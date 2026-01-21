@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useWardenTheme } from "@/component/ThemeContext";
 import {
   LogOut,
   Fingerprint,
@@ -9,14 +10,16 @@ import {
   User,
   Mail,
   ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { theme } = useWardenTheme();
   const [profile, setProfile] = useState({
-    userId: "LOADING...",
-    username: "LOADING...",
-    email: "LOADING...",
+    userId: "loading...",
+    username: "loading...",
+    email: "loading...",
   });
 
   useEffect(() => {
@@ -24,40 +27,26 @@ export default function SettingsPage() {
       const api = (window as any).electronAPI;
       if (!api) return;
 
-      // 1. Ensure the Main process knows who we are (Persistence)
       const savedEmail = localStorage.getItem("warden_user_email");
       if (savedEmail) {
         await api.syncSession(savedEmail);
-
-        // 2. Now fetch the actual profile details
         const result = await api.getProfile();
         if (result.success) {
           setProfile(result.data);
         }
       }
     };
-
     fetchProfileData();
   }, []);
 
   const handleLogout = async () => {
     try {
       const electron = (window as any).electronAPI;
-
-      // 1. Tell the Main Process to wipe global.currentUserId
-      if (electron?.logout) {
-        await electron.logout();
-      }
-
-      // 2. Terminate the session cookie so Middleware blocks access
+      if (electron?.logout) await electron.logout();
       document.cookie =
         "warden_session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-
-      // 3. Clear local storage to prevent data leakage between users
       localStorage.clear();
       sessionStorage.clear();
-
-      // 4. Return to the auth gate
       router.push("/auth");
     } catch (err) {
       console.error("Logout error:", err);
@@ -88,12 +77,12 @@ export default function SettingsPage() {
           <IdentityItem
             icon={<Code size={18} />}
             label="Dev_Stack"
-            value="Next.js / Electron"
+            value="Next.js / Electron / SQLite"
           />
         </div>
       </aside>
 
-      {/* RIGHT: 80% GLOWY SYSTEM CONFIG */}
+      {/* RIGHT: 80% SYSTEM CONFIG */}
       <div className="col-span-12 lg:col-span-9 pl-16 pt-12 space-y-12">
         <section className="space-y-10">
           <div className="space-y-1">
@@ -105,25 +94,74 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <div className="space-y-4 max-w-2xl">
-            <DataRow
-              icon={<Hash size={18} />}
-              label="System User ID"
-              value={profile.userId}
-              glowColor="blue"
-            />
-            <DataRow
-              icon={<User size={18} />}
-              label="Username"
-              value={profile.username}
-              glowColor="purple"
-            />
-            <DataRow
-              icon={<Mail size={18} />}
-              label="Primary Email"
-              value={profile.email}
-              glowColor="emerald"
-            />
+          {/* DYNAMIC REGISTRY CARD */}
+          <div
+            className={`max-w-2xl rounded-sm overflow-hidden transition-all duration-700 border ${
+              theme === "cobalt"
+                ? "bg-black border-white/10 shadow-none" // MacBook Terminal Style
+                : "bg-white border-white/10 shadow-[0_30px_60px_-12px_rgba(0,0,0,0.9)]" // Your White Page
+            }`}
+          >
+            {/* WINDOW HEADER */}
+            <div
+              className={`px-6 py-3 border-b transition-colors duration-700 flex justify-between items-center ${
+                theme === "cobalt"
+                  ? "bg-[#111] border-white/5"
+                  : "bg-neutral-200 border-neutral-200"
+              }`}
+            >
+              <span
+                className={`text-[10px] font-black uppercase tracking-[0.4em] ${
+                  theme === "cobalt" ? "text-white/40" : "text-neutral-900"
+                }`}
+                style={{ color: theme === "cobalt" ? "" : "#171717" }}
+              >
+                USER_DATABASE_SHEET
+              </span>
+              <div className="flex gap-1.5">
+                <div
+                  className={`w-2 h-2 rounded-full ${theme === "cobalt" ? "bg-white/10" : "bg-neutral-400"}`}
+                />
+                <div
+                  className={`w-2 h-2 rounded-full ${theme === "cobalt" ? "bg-white/20" : "bg-neutral-700"}`}
+                />
+              </div>
+            </div>
+
+            {/* DATA ROWS CONTAINER */}
+            <div
+              className={`divide-y transition-colors duration-700 ${
+                theme === "cobalt" ? "divide-white/5" : "divide-neutral-300"
+              }`}
+            >
+              <DataRow
+                icon={<Hash size={18} />}
+                label="System User ID"
+                value={profile.userId}
+                iconColor={
+                  theme === "cobalt" ? "text-white/40" : "text-neutral-600"
+                }
+                theme={theme}
+              />
+              <DataRow
+                icon={<User size={18} />}
+                label="Operator Username"
+                value={profile.username}
+                iconColor={
+                  theme === "cobalt" ? "text-white/40" : "text-neutral-600"
+                }
+                theme={theme}
+              />
+              <DataRow
+                icon={<Mail size={18} />}
+                label="Primary Relay Email"
+                value={profile.email}
+                iconColor={
+                  theme === "cobalt" ? "text-white/40" : "text-neutral-600"
+                }
+                theme={theme}
+              />
+            </div>
           </div>
         </section>
 
@@ -158,46 +196,33 @@ export default function SettingsPage() {
   );
 }
 
-/* --- UI COMPONENTS --- */
-
-function DataRow({ icon, label, value, glowColor }: any) {
-  // Glow Mapping for a "High-Tech" feel
-  const glowStyles: any = {
-    blue: "group-hover:border-blue-500/50 group-hover:shadow-[0_0_15px_rgba(59,130,246,0.15)] text-blue-500",
-    purple:
-      "group-hover:border-purple-500/50 group-hover:shadow-[0_0_15px_rgba(168,85,247,0.15)] text-purple-500",
-    emerald:
-      "group-hover:border-emerald-500/50 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] text-emerald-500",
-  };
-
-  const textGlow: any = {
-    blue: "group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]",
-    purple: "group-hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]",
-    emerald: "group-hover:drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]",
-  };
-
+function DataRow({ icon, label, value, iconColor, theme }: any) {
   return (
-    <div className="group relative flex items-center justify-between p-7 transition-all duration-500 border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] overflow-hidden">
-      {/* GLOWING ACCENT LINE */}
-      <div
-        className={`absolute left-0 top-0 bottom-0 w-[2px] transition-all duration-500 bg-neutral-800 ${glowStyles[glowColor].split(" ")[0]}`}
-      />
-
-      <div className="flex items-center gap-6 relative z-10">
+    <div
+      className={`group flex items-center justify-between p-7 transition-colors duration-200 ${
+        theme === "cobalt" ? "hover:bg-white/[0.02]" : "hover:bg-neutral-100"
+      }`}
+    >
+      <div className="flex items-center gap-6">
         <div
-          className={`transition-all duration-500 group-hover:scale-110 ${glowStyles[glowColor].split(" ").pop()}`}
+          className={`${iconColor} opacity-70 group-hover:opacity-100 transition-opacity`}
         >
           {icon}
         </div>
         <div className="flex flex-col">
-          <span className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.3em] group-hover:text-neutral-300 transition-colors">
+          <span
+            className={`text-[9px] font-black uppercase tracking-[0.3em] ${
+              theme === "cobalt" ? "text-white/20" : "text-neutral-400"
+            }`}
+            style={{ color: theme === "cobalt" ? "a3a3a3" : "#888888" }}
+          >
             {label}
           </span>
         </div>
       </div>
-
       <span
-        className={`text-xl font-bold text-white uppercase italic tracking-tighter transition-all duration-500 ${textGlow[glowColor]}`}
+        className="text-lg font-medium lowercase tracking-tight transition-colors duration-500"
+        style={{ color: theme === "cobalt" ? "#ffffff" : "#0a0a0a" }}
       >
         {value}
       </span>
@@ -213,7 +238,7 @@ function IdentityItem({ icon, label, value }: any) {
         <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
           {label}
         </p>
-        <p className="text-sm font-bold text-white uppercase tracking-tighter italic">
+        <p className="text-sm font-medium text-white lowercase tracking-tight">
           {value}
         </p>
       </div>
