@@ -6,13 +6,14 @@ export default function PerformancePage() {
   const MAX_MINS = 300;
   const GOAL_MINS = 120;
 
-  // 1. Updated state to hold the new dynamic range data
+  // 1. Updated state to include streak
   const [performanceData, setPerformanceData] = useState({
     currentWeek: new Array(10).fill(0),
     activeIndex: 8,
     rangeLabel: "Jan 15 - Jan 25",
     startDayNumber: 15,
     startMonthName: "Jan",
+    streak: 0, // <--- New field added
   });
 
   const fetchPulse = async () => {
@@ -20,7 +21,6 @@ export default function PerformancePage() {
     if (api) {
       const result = await api.getPerformancePulse();
       if (result.success) {
-        // 2. Save the entire data object from the backend
         setPerformanceData(result.data);
       }
     }
@@ -39,20 +39,20 @@ export default function PerformancePage() {
     rangeLabel,
     startDayNumber,
     startMonthName,
+    streak, // <--- Destructured here
   } = performanceData;
 
   const totalMins = currentWeek.reduce((a, b) => a + b, 0);
   const avgMins = Math.round(totalMins / currentWeek.length);
   const peakMins = Math.max(...currentWeek);
 
-  // Helper function to calculate the date for each vial
   const getDisplayDate = (startDay: number, month: string, index: number) => {
-    const date = new Date(2026, 0, startDay + index); // Year 2026, Month 0 (Jan)
+    const date = new Date(2026, 0, startDay + index);
     return `${date.getDate()} ${date.toLocaleString("en-US", { month: "short" })}`;
   };
 
   return (
-    <div className="w-full mx-auto min-h-screen p-8 lg:p-16 select-none text-white overflow-hidden font-sans bg-[#050505]">
+    <div className="w-full mx-auto min-h-screen p-8 lg:p-16 select-none text-white overflow-hidden font-sans ">
       {/* HEADER */}
       <header className="flex justify-between items-start mb-40">
         <div className="space-y-4">
@@ -70,14 +70,19 @@ export default function PerformancePage() {
           </h1>
         </div>
         <div className="flex gap-20">
-          {/* Dynamic Range Label from Backend */}
           <DetailStat
             label="Telemetry_Range"
             value={rangeLabel}
             unit=""
             highlight={false}
           />
-          <DetailStat label="Active_Streak" value="12" unit="DAYS" highlight />
+          {/* 2. REAL STREAK INTEGRATED HERE */}
+          <DetailStat
+            label="Active_Streak"
+            value={(streak ?? 0).toString()} // Use ?? 0 as a safety net
+            unit="DAYS"
+            highlight
+          />
         </div>
       </header>
 
@@ -91,7 +96,7 @@ export default function PerformancePage() {
             mins={mins}
             goal={GOAL_MINS}
             maxMins={MAX_MINS}
-            isActive={i === activeIndex} // This ensures the glow matches the data
+            isActive={i === activeIndex}
             displayDate={getDisplayDate(startDayNumber, startMonthName, i)}
           />
         ))}
@@ -150,7 +155,7 @@ export default function PerformancePage() {
   );
 }
 
-// Updated LiquidVial to accept displayDate
+// ... SummaryBlock, DetailStat, and LiquidVial remain UNTOUCHED below ...
 function LiquidVial({
   index,
   mins,
@@ -172,11 +177,7 @@ function LiquidVial({
       />
       <div className="relative w-[1px] h-full bg-white/5">
         <div
-          className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-[3px] animate-fill rounded-t-full transition-all duration-700 ${
-            isActive
-              ? "bg-yellow-600 shadow-[0_0_35px_rgba(234,179,8,0.8),0_0_10px_rgba(234,179,8,1)]"
-              : "bg-white/40"
-          }`}
+          className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-[3px] animate-fill rounded-t-full transition-all duration-700 ${isActive ? "bg-yellow-600 shadow-[0_0_35px_rgba(234,179,8,0.8),0_0_10px_rgba(234,179,8,1)]" : "bg-white/40"}`}
           style={{
             height: `${Math.max(progress, 2)}%`,
             animationDelay: `${index * 120}ms`,
@@ -237,18 +238,20 @@ function SummaryBlock({ icon, label, value, sub }: any) {
 function DetailStat({ label, value, unit, highlight }: any) {
   return (
     <div className="text-right space-y-1">
-      <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">
+      <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.1em]">
         {label}
       </p>
-      <p className="text-4xl font-light tracking-tighter text-white/40">
+      <p className="text-2xl tracking-[-0.02em]">
         <span
-          className={`font-black italic ${highlight ? "text-yellow-500" : "text-white"}`}
+          className={`font-light uppercase tracking-[0.1em] ${highlight ? "font-black italic text-yellow-500" : "text-white/60 font-medium"}`}
         >
           {value}
         </span>
-        <span className="text-[10px] text-white/20 ml-2 font-bold italic tracking-widest">
-          {unit}
-        </span>
+        {unit && (
+          <span className="text-[10px] text-white/20 ml-2 font-bold italic tracking-widest uppercase">
+            {unit}
+          </span>
+        )}
       </p>
     </div>
   );

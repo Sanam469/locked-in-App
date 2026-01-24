@@ -252,6 +252,7 @@ ipcMain.handle("get-performance-pulse", async () => {
   return new Promise((resolve) => {
     if (!global.currentUserId)
       return resolve({ success: false, error: "NO_USER" });
+
     const anchorDate = new Date("2026-01-15T00:00:00");
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -267,49 +268,105 @@ ipcMain.handle("get-performance-pulse", async () => {
     const endDate = endDateObj.toISOString().split("T")[0];
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-    db.all(
-      `SELECT substr(start_time, 1, 10) as session_date, SUM(actual_minutes) as daily_total FROM sessions WHERE user_id = ? AND session_date >= ? AND session_date <= ? GROUP BY session_date`,
-      [global.currentUserId, startDate, endDate],
-      (err, rows) => {
-        let currentWeek = new Array(10).fill(0);
-        const startAnchorTime = startDateObj.getTime();
-        if (rows) {
-          rows.forEach((row) => {
-            const [rYear, rMonth, rDay] = row.session_date
-              .split("-")
-              .map(Number);
-            const entryDate = new Date(rYear, rMonth - 1, rDay).getTime();
-            const diffDays = Math.round(
-              (entryDate - startAnchorTime) / (1000 * 60 * 60 * 24),
-            );
-            if (diffDays >= 0 && diffDays < 10)
-              currentWeek[diffDays] = row.daily_total || 0;
-          });
-        }
-        const activeIndex = Math.round(
-          (today.getTime() - startAnchorTime) / (1000 * 60 * 60 * 24),
-        );
-        db.get(
-          "SELECT total_mins_today, last_session_date FROM users WHERE user_id = ?",
-          [global.currentUserId],
-          (err, userRow) => {
-            if (userRow && userRow.last_session_date === todayStr)
-              currentWeek[activeIndex] = userRow.total_mins_today;
-            const result = {
-              currentWeek,
-              activeIndex,
-              rangeLabel: `${startDateObj.toLocaleDateString("en-US", { day: "numeric", month: "short" })} - ${endDateObj.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`,
-              startDayNumber: startDateObj.getDate(),
-              startMonthName: startDateObj.toLocaleDateString("en-US", {
-                month: "short",
-              }),
-            };
-            global.performanceCache = result;
-            resolve({ success: true, data: result });
-          },
-        );
-      },
-    );
+    // --- STEP 1: CALCULATE DYNAMIC STREAK ---
+    const streakQuery = `
+      SELECT DISTINCT substr(start_time, 1, 10) as session_day 
+      FROM sessions 
+      WHERE user_id = ? 
+      ORDER BY session_day DESC
+    `;
+
+    db.all(streakQuery, [global.currentUserId], (err, sessionRows) => {
+      let streak = 0;
+      const sessionDays = sessionRows
+        ? sessionRows.map((r) => r.session_day)
+        : [];
+
+      // Check the Dashboard table (users) for today's live minutes
+      db.get(
+        "SELECT total_mins_today, last_session_date FROM users WHERE user_id = ?",
+        [global.currentUserId],
+        (err, userRow) => {
+          let hasMinsToday =
+            userRow &&
+            userRow.last_session_date === todayStr &&
+            userRow.total_mins_today > 0;
+          let checkDate = new Date(today);
+
+          // If no minutes today in dashboard AND no sessions in table, check yesterday
+          if (!hasMinsToday && !sessionDays.includes(todayStr)) {
+            checkDate.setDate(checkDate.getDate() - 1);
+            const yesterdayStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, "0")}-${String(checkDate.getDate()).padStart(2, "0")}`;
+
+            if (!sessionDays.includes(yesterdayStr)) {
+              checkDate = null; // No work today or yesterday = 0 streak
+            }
+          }
+
+          if (checkDate) {
+            for (let i = 0; i < 1000; i++) {
+              const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, "0")}-${String(checkDate.getDate()).padStart(2, "0")}`;
+
+              // Current checkDate is "today" and we have dashboard mins OR it's in the sessions table
+              if (
+                (dateStr === todayStr && hasMinsToday) ||
+                sessionDays.includes(dateStr)
+              ) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+              } else {
+                break;
+              }
+            }
+          }
+
+          // --- STEP 2: PROCEED WITH PULSE LOGIC ---
+          db.all(
+            `SELECT substr(start_time, 1, 10) as session_date, SUM(actual_minutes) as daily_total FROM sessions WHERE user_id = ? AND session_date >= ? AND session_date <= ? GROUP BY session_date`,
+            [global.currentUserId, startDate, endDate],
+            (err, rows) => {
+              let currentWeek = new Array(10).fill(0);
+              const startAnchorTime = startDateObj.getTime();
+              if (rows) {
+                rows.forEach((row) => {
+                  const [rYear, rMonth, rDay] = row.session_date
+                    .split("-")
+                    .map(Number);
+                  const entryDate = new Date(rYear, rMonth - 1, rDay).getTime();
+                  const diffDays = Math.round(
+                    (entryDate - startAnchorTime) / (1000 * 60 * 60 * 24),
+                  );
+                  if (diffDays >= 0 && diffDays < 10)
+                    currentWeek[diffDays] = row.daily_total || 0;
+                });
+              }
+              const activeIndex = Math.round(
+                (today.getTime() - startAnchorTime) / (1000 * 60 * 60 * 24),
+              );
+
+              // Apply Mirror for the Bar UI
+              if (hasMinsToday) {
+                currentWeek[activeIndex] = userRow.total_mins_today;
+              }
+
+              const result = {
+                currentWeek,
+                activeIndex,
+                streak,
+                rangeLabel: `${startDateObj.toLocaleDateString("en-US", { day: "numeric", month: "short" })} - ${endDateObj.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`,
+                startDayNumber: startDateObj.getDate(),
+                startMonthName: startDateObj.toLocaleDateString("en-US", {
+                  month: "short",
+                }),
+              };
+
+              global.performanceCache = result;
+              resolve({ success: true, data: result });
+            },
+          );
+        },
+      );
+    });
   });
 });
 
