@@ -29,6 +29,37 @@ export default function DashboardPage() {
   const velocity = useRef(0);
   const rafId = useRef<number | null>(null);
 
+  // ADD THIS INSIDE YOUR DashboardPage COMPONENT
+  useEffect(() => {
+    let heartbeatInterval: NodeJS.Timeout;
+
+    if (isLocked && secondsLeft > 0) {
+      // Every 60 seconds, sync 1 minute of focus to the DB
+      heartbeatInterval = setInterval(async () => {
+        const api = (window as any).electronAPI;
+        if (api) {
+          // We prepare the local timestamp to match the Performance Page query
+          const localTimestamp = new Date()
+            .toLocaleString("sv-SE")
+            .replace(" ", "T");
+
+          await api.saveSessionData({
+            actual_minutes: 1, // Add 1 minute to the total
+            start_time: localTimestamp,
+            target_site: getDomain(url),
+            goal_minutes: minutes,
+            status: "SUCCESS",
+          });
+
+          // Optionally refresh the "System Enforcement Quota" bar locally
+          setTodayMinutes((prev) => prev + 1);
+        }
+      }, 60000);
+    }
+
+    return () => clearInterval(heartbeatInterval);
+  }, [isLocked, url, minutes]);
+
   useEffect(() => {
     const initAndFetchStats = async () => {
       const api = (window as any).electronAPI;
@@ -232,7 +263,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Terminal size={14} className="text-blue-500 relative z-10" />
+                  <Terminal size={14} className="text-blue-600 relative z-10" />
                   <div className="absolute inset-0 bg-blue-600/20 blur-sm rounded-full animate-pulse" />
                 </div>
                 <span className="text-[10px] text-slate-400 uppercase tracking-[0.4em] font-black">
@@ -241,10 +272,10 @@ export default function DashboardPage() {
               </div>
               {/* Live Status Indicator */}
               <div className="flex items-center gap-2">
-                <span className="text-[8px] font-black text-blue-600/60 uppercase tracking-widest">
+                <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
                   Live Feed
                 </span>
-                <div className="w-1 h-1 bg-blue-600 rounded-full animate-ping" />
+                <div className="w-1 h-1 bg-green-600 rounded-full animate-ping" />
               </div>
             </div>
 

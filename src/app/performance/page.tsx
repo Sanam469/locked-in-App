@@ -1,81 +1,254 @@
 "use client";
-import { Target, Zap, Activity, ShieldAlert, BarChart3 } from "lucide-react";
-import { useWardenTheme } from "@/component/ThemeContext";
+import React, { useEffect, useState } from "react";
+import { TrendingUp, BarChart3, Target, Radio } from "lucide-react";
 
 export default function PerformancePage() {
-  const { theme } = useWardenTheme();
+  const MAX_MINS = 300;
+  const GOAL_MINS = 120;
+
+  // 1. Updated state to hold the new dynamic range data
+  const [performanceData, setPerformanceData] = useState({
+    currentWeek: new Array(10).fill(0),
+    activeIndex: 8,
+    rangeLabel: "Jan 15 - Jan 25",
+    startDayNumber: 15,
+    startMonthName: "Jan",
+  });
+
+  const fetchPulse = async () => {
+    const api = (window as any).electronAPI;
+    if (api) {
+      const result = await api.getPerformancePulse();
+      if (result.success) {
+        // 2. Save the entire data object from the backend
+        setPerformanceData(result.data);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchPulse();
+    const interval = setInterval(fetchPulse, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Use the data from our new state object
+  const {
+    currentWeek,
+    activeIndex,
+    rangeLabel,
+    startDayNumber,
+    startMonthName,
+  } = performanceData;
+
+  const totalMins = currentWeek.reduce((a, b) => a + b, 0);
+  const avgMins = Math.round(totalMins / currentWeek.length);
+  const peakMins = Math.max(...currentWeek);
+
+  // Helper function to calculate the date for each vial
+  const getDisplayDate = (startDay: number, month: string, index: number) => {
+    const date = new Date(2026, 0, startDay + index); // Year 2026, Month 0 (Jan)
+    return `${date.getDate()} ${date.toLocaleString("en-US", { month: "short" })}`;
+  };
 
   return (
-    <div className="grid grid-cols-12 gap-0 mt-8 pb-32 animate-pageIn w-full min-h-screen border-t dynamic-border">
-      {/* LEFT: TELEMETRY (25% / 3 cols) */}
-      <aside className="col-span-12 lg:col-span-3 pr-10 border-r dynamic-border pt-12 space-y-12">
-        <div className="space-y-10">
-          <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.3em]">
-            Telemetry
-          </h3>
-          <div className="space-y-10">
-            <StatDetail label="Success Rate" value="94%" />
-            <StatDetail label="Total Focus" value="128h" />
-            <StatDetail label="Current Streak" value="12D" highlight />
-          </div>
-        </div>
-      </aside>
-
-      {/* RIGHT: INTENSITY GRAPH (75% / 9 cols) */}
-      <div className="col-span-12 lg:col-span-9 pl-16 pt-12 space-y-24">
-        <section className="space-y-12">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.5em]">
-              Focus Intensity Graph
-            </h3>
-            <span className="text-[10px] font-mono text-slate-500 uppercase">
-              Jan 08 - Jan 15
+    <div className="w-full mx-auto min-h-screen p-8 lg:p-16 select-none text-white overflow-hidden font-sans bg-[#050505]">
+      {/* HEADER */}
+      <header className="flex justify-between items-start mb-40">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 bg-pink-600 rounded-full animate-pulse shadow-[0_0_10px_rgba(219,39,119,1)]" />
+            <span className="text-[10px] font-black uppercase tracking-[0.8em] text-pink-300/50">
+              locked_in
             </span>
           </div>
+          <h1 className="text-7xl font-thin tracking-[-0.05em] leading-none text-white/20 uppercase">
+            Focus{" "}
+            <span className="font-black italic text-white tracking-tighter text-10xl">
+              Archives
+            </span>
+          </h1>
+        </div>
+        <div className="flex gap-20">
+          {/* Dynamic Range Label from Backend */}
+          <DetailStat
+            label="Telemetry_Range"
+            value={rangeLabel}
+            unit=""
+            highlight={false}
+          />
+          <DetailStat label="Active_Streak" value="12" unit="DAYS" highlight />
+        </div>
+      </header>
 
-          <div className="h-80 flex items-end justify-between border-b-2 dynamic-border pb-4 relative">
-            {[40, 70, 45, 90, 65, 80, 30].map((h, i) => (
-              <div
-                key={i}
-                className="w-full mx-4 flex flex-col items-center gap-6 group"
-              >
-                <div
-                  className="w-full bg-white/5 transition-all relative overflow-hidden"
-                  style={{ height: `${h}%` }}
-                >
-                  {/* Dynamic Accent Bar */}
-                  <div
-                    className="absolute top-0 left-0 w-full h-[2px] shadow-[0_0_15px_var(--accent)]"
-                    style={{ backgroundColor: "var(--accent)" }}
-                  />
-                  <div
-                    className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity"
-                    style={{ backgroundColor: "var(--accent)" }}
-                  />
-                </div>
-                <span className="text-xs font-black text-slate-500 uppercase tracking-tighter italic">
-                  D{i + 1}
-                </span>
-              </div>
-            ))}
+      {/* PILLAR FIELD */}
+      <section className="relative h-[450px] flex items-end justify-between w-full px-4 mb-32">
+        <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/10" />
+        {currentWeek.map((mins, i) => (
+          <LiquidVial
+            key={i}
+            index={i}
+            mins={mins}
+            goal={GOAL_MINS}
+            maxMins={MAX_MINS}
+            isActive={i === activeIndex} // This ensures the glow matches the data
+            displayDate={getDisplayDate(startDayNumber, startMonthName, i)}
+          />
+        ))}
+      </section>
+
+      {/* SUMMARY FOOTER */}
+      <footer className="grid grid-cols-10 gap-0 border-t border-white/10 pt-10 mt-auto">
+        <div className="col-span-10 flex justify-between items-center">
+          <SummaryBlock
+            icon={<TrendingUp size={14} className="text-yellow-500" />}
+            label="Total_Volume"
+            value={`${totalMins}m`}
+            sub="Aggregate"
+          />
+          <div className="h-10 w-[1px] bg-white/5" />
+          <SummaryBlock
+            icon={<BarChart3 size={14} className="text-pink-500" />}
+            label="Daily_Average"
+            value={`${avgMins}m`}
+            sub="Mean"
+          />
+          <div className="h-10 w-[1px] bg-white/5" />
+          <SummaryBlock
+            icon={<Target size={14} className="text-blue-500" />}
+            label="Peak_Intensity"
+            value={`${peakMins}m`}
+            sub="Max Burst"
+          />
+          <div className="h-10 w-[1px] bg-white/5" />
+          <div className="text-right">
+            <span className="block text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mb-1">
+              System_Status
+            </span>
+            <span className="text-sm font-mono font-bold text-yellow-500 flex items-center gap-2">
+              <Radio size={12} className="animate-pulse" /> ENFORCING
+            </span>
           </div>
-        </section>
+        </div>
+      </footer>
+
+      <style jsx global>{`
+        @keyframes liquidFill {
+          0% {
+            height: 0%;
+            filter: brightness(0);
+          }
+          100% {
+            filter: brightness(1);
+          }
+        }
+        .animate-fill {
+          animation: liquidFill 1.8s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// Updated LiquidVial to accept displayDate
+function LiquidVial({
+  index,
+  mins,
+  goal,
+  maxMins,
+  isActive,
+  displayDate,
+}: any) {
+  const progress = Math.min((mins / maxMins) * 100, 100);
+  return (
+    <div className="relative group flex flex-col items-center h-full flex-1">
+      <span
+        className={`absolute -top-12 text-[10px] font-black tracking-widest transition-colors duration-500 ${isActive ? "text-yellow-500" : "text-white/50"}`}
+      >
+        {displayDate}
+      </span>
+      <div
+        className={`absolute inset-x-2 lg:inset-x-4 top-0 bottom-0 border-x border-white/20 bg-white/[0.05] transition-colors duration-500 ${isActive ? "bg-yellow-500/[0.07] border-yellow-500/10" : ""}`}
+      />
+      <div className="relative w-[1px] h-full bg-white/5">
+        <div
+          className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-[3px] animate-fill rounded-t-full transition-all duration-700 ${
+            isActive
+              ? "bg-yellow-600 shadow-[0_0_35px_rgba(234,179,8,0.8),0_0_10px_rgba(234,179,8,1)]"
+              : "bg-white/40"
+          }`}
+          style={{
+            height: `${Math.max(progress, 2)}%`,
+            animationDelay: `${index * 120}ms`,
+          }}
+        >
+          <div
+            className={`absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full ${isActive ? "bg-white shadow-[0_0_15px_white]" : "opacity-0"}`}
+          />
+        </div>
+        <div
+          className="absolute -left-14 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-x-2 group-hover:translate-x-0 flex flex-col items-end pointer-events-none"
+          style={{ bottom: `${progress}%` }}
+        >
+          <span className="text-[18px] font-black italic tracking-tighter text-white leading-none">
+            {mins}
+          </span>
+          <span className="text-[8px] font-bold text-yellow-500 uppercase tracking-widest">
+            MINS
+          </span>
+        </div>
+      </div>
+      <div
+        className={`mt-10 transition-all duration-1000 ${isActive ? "opacity-100" : "opacity-10"}`}
+      >
+        <span
+          className={`text-[9px] font-black uppercase tracking-[0.4em] ${isActive ? "text-yellow-500" : "text-white"}`}
+        >
+          SLOT_{index + 1}
+        </span>
       </div>
     </div>
   );
 }
 
-function StatDetail({ label, value, highlight }: any) {
+function SummaryBlock({ icon, label, value, sub }: any) {
   return (
-    <div className="space-y-2 border-l-2 dynamic-border pl-4 transition-colors">
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+    <div className="flex items-center gap-6">
+      <div className="p-3 bg-white/[0.03] border border-white/5 rounded-sm">
+        {icon}
+      </div>
+      <div>
+        <span className="block text-[9px] font-black text-white/20 uppercase tracking-widest">
+          {label}
+        </span>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-black italic tracking-tighter text-white">
+            {value}
+          </span>
+          <span className="text-[8px] font-bold text-white/10 uppercase tracking-tighter">
+            {sub}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailStat({ label, value, unit, highlight }: any) {
+  return (
+    <div className="text-right space-y-1">
+      <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">
         {label}
       </p>
-      <p
-        className="text-4xl font-black italic tracking-tighter text-white"
-        style={{ color: highlight ? "var(--accent)" : "white" }}
-      >
-        {value}
+      <p className="text-4xl font-light tracking-tighter text-white/40">
+        <span
+          className={`font-black italic ${highlight ? "text-yellow-500" : "text-white"}`}
+        >
+          {value}
+        </span>
+        <span className="text-[10px] text-white/20 ml-2 font-bold italic tracking-widest">
+          {unit}
+        </span>
       </p>
     </div>
   );

@@ -18,4 +18,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Add this to your contextBridge.exposeInMainWorld("electronAPI", { ... })
   logout: () => ipcRenderer.invoke("auth:logout"),
+
+  // Primary data fetcher
+  getPerformancePulse: () => ipcRenderer.invoke("get-performance-pulse"),
+  // Sync version for "Instant-On" UI rendering
+  getInitialPerformance: () =>
+    ipcRenderer.sendSync("get-initial-performance-cache"),
 });
