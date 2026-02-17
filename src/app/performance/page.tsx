@@ -9,6 +9,7 @@ export default function PerformancePage() {
   // 1. Updated state to include streak
   const [performanceData, setPerformanceData] = useState({
     currentWeek: new Array(10).fill(0),
+    dayLabels: new Array(10).fill(""),
     activeIndex: 8,
     rangeLabel: "Jan 15 - Jan 25",
     startDayNumber: 15,
@@ -90,16 +91,17 @@ export default function PerformancePage() {
       <section className="relative h-[450px] flex items-end justify-between w-full px-4 mb-32">
         <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/10" />
         {currentWeek.map((mins, i) => (
-          <LiquidVial
-            key={i}
-            index={i}
-            mins={mins}
-            goal={GOAL_MINS}
-            maxMins={MAX_MINS}
-            isActive={i === activeIndex}
-            displayDate={getDisplayDate(startDayNumber, startMonthName, i)}
-          />
-        ))}
+    <LiquidVial
+      key={i}
+      index={i}
+      mins={mins}
+      goal={GOAL_MINS}
+      maxMins={MAX_MINS}
+      isActive={i === activeIndex}
+      // CHANGE THIS LINE: Use the label from Electron
+      displayDate={performanceData.dayLabels[i] || `SLOT_${i + 1}`} 
+    />
+  ))}
       </section>
 
       {/* SUMMARY FOOTER */}

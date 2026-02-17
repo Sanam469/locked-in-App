@@ -162,6 +162,7 @@ ipcMain.handle("prepare-login", async (event, targetUrl) => {
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true,
+        enableWebAuthn: false
       },
     });
     const firefoxAgent =
@@ -188,20 +189,37 @@ ipcMain.handle("prepare-login", async (event, targetUrl) => {
 });
 
 ipcMain.handle("prepare-url-login", async (event, targetUrl) => {
+  // 1. DATA CLEANING: This kills the "Illegal Invocation" flood in your terminal
+  const finalUrl = String(targetUrl);
   const wardenSession = mainWindow.webContents.session;
+
   return new Promise((resolve) => {
-    const isGoogle = targetUrl.toLowerCase().includes("google.com");
-    const userAgent = isGoogle
-      ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) rv:125.0 Gecko/20100101 Firefox/125.0"
+    const urlLower = finalUrl.toLowerCase();
+    const isGoogleOrYT = urlLower.includes("google.com") || urlLower.includes("youtube.com");
+
+    // 2. IDENTITY FIX: Firefox 115 is the "Legacy" sweet spot. 
+    // It forces Google/YT to skip the Passkey check and use the Password box.
+    const userAgent = isGoogleOrYT
+      ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) Gecko/20100101 Firefox/115.0"
       : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
     const loginWin = new BrowserWindow({
-      width: isGoogle ? 500 : 1000,
-      height: isGoogle ? 650 : 800,
+      width: isGoogleOrYT ? 500 : 1000,
+      height: isGoogleOrYT ? 650 : 800,
       parent: mainWindow,
       modal: true,
       show: true,
-      webPreferences: { session: wardenSession },
+      webPreferences: { 
+        session: wardenSession,
+        nodeIntegration: false,
+        contextIsolation: true,
+        webSecurity: true,
+        // 3. HARDWARE SILENCER: Tells Google not to even look for a Fingerprint/PIN
+        enableWebAuthn: false,
+        disableBlinkFeatures: 'WebAuthentication,WebBluetooth,WebUSB'
+      },
     });
+
     let loginActionDetected = false;
     const cookieListener = (event, details) => {
       if (
@@ -212,20 +230,24 @@ ipcMain.handle("prepare-url-login", async (event, targetUrl) => {
       )
         loginActionDetected = true;
     };
+
     wardenSession.cookies.on("changed", cookieListener);
+    
     loginWin.webContents.on("did-start-navigation", () => {
       loginWin.webContents.executeJavaScript(
         `try { Object.defineProperty(navigator.__proto__, 'webdriver', {get: () => undefined}); } catch(e) {}`,
       );
     });
-    loginWin.loadURL(targetUrl, { userAgent });
+
+    // Load using the cleaned finalUrl
+    loginWin.loadURL(finalUrl, { userAgent });
+
     loginWin.on("closed", () => {
       wardenSession.cookies.removeListener("changed", cookieListener);
       resolve(loginActionDetected);
     });
   });
 });
-
 // --- DASHBOARD & PERFORMANCE (THE MIRROR FIX) ---
 ipcMain.on("get-initial-performance-cache", (event) => {
   event.returnValue = global.performanceCache;
@@ -354,10 +376,14 @@ ipcMain.handle("get-performance-pulse", async () => {
                 activeIndex,
                 streak,
                 rangeLabel: `${startDateObj.toLocaleDateString("en-US", { day: "numeric", month: "short" })} - ${endDateObj.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`,
-                startDayNumber: startDateObj.getDate(),
-                startMonthName: startDateObj.toLocaleDateString("en-US", {
-                  month: "short",
+                // ADD THIS LINE: It creates the "15 Jan", "16 Jan" strings dynamically
+                dayLabels: currentWeek.map((_, i) => {
+                  const d = new Date(startDateObj);
+                  d.setDate(d.getDate() + i);
+                  return `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
                 }),
+                startDayNumber: startDateObj.getDate(),
+                startMonthName: startDateObj.toLocaleDateString("en-US", { month: "short" }),
               };
 
               global.performanceCache = result;
