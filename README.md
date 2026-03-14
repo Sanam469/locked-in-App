@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMzluaGN1Y2UxbGtzYnkxZnkzZmNyN240aGFpYW4xeGkwdzhpNmE4aiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKSjRrfIPjeiVy0/giphy.gif" width="200" alt="Lock Icon" />
   <h1>🔒 LOCKED-IN APP</h1>
-  <h3>The Ultimate "No-Escape" Study Warden for DSA & GATE Aspirants</h3>
+  <h3>The Ultimate "No-Escape" Study Warden for Competitive Aspirants</h3>
   <p><strong>You either study, or you face the Containment Veil. No distractions. No excuses.</strong></p>
 </div>
 
