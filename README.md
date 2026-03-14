@@ -90,6 +90,6 @@ Want to lock yourself in? It's simple.
 ---
 
 ### 🛑 WARNING
-**Do not engage a Warden Session if you aren't ready to study.** The global shortcut to kill a rogue session is `Ctrl/Cmd + Shift + X`. Use it wisely.
+**Do not engage a Warden Session if you aren't ready to study.** The global shortcut to kill a rogue session is `Ctrl/Cmd + Shift + X`(for developers safe exit). Use it wisely.
 
 *"May your streaks be long, and your code bug-free."*
