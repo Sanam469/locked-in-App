@@ -24,4 +24,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Sync version for "Instant-On" UI rendering
   getInitialPerformance: () =>
     ipcRenderer.sendSync("get-initial-performance-cache"),
+
+  // LOCAL FILE SUPPORT
+  selectFile: () => ipcRenderer.invoke("system:open-file"),
 });

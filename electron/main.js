@@ -5,17 +5,39 @@ const {
   globalShortcut,
   ipcMain,
   session,
+  protocol,
+  net,
+  dialog
 } = require("electron");
 const path = require("path");
+const { pathToFileURL } = require('url');
+
+// Register the scheme as privileged (this helps with fetch and other web features)
+protocol.registerSchemesAsPrivileged([
+  { 
+    scheme: 'warden', 
+    privileges: { 
+      standard: true, 
+      secure: true, 
+      supportFetchAPI: true,
+      bypassCSP: true,
+      corsEnabled: true
+    } 
+  }
+]);
+
 const db = require("./database");
 const { handleSignUp, handleLogin } = require("./auth");
 const activeWin = require("active-win");
 
 let mainWindow;
 let veilWindow;
+let loadingWindow;
 let wardenLoop;
 let lastState = "focused";
-let sessionStartTime = null;
+let sessionsStartTime = null;
+let initializationTimeout = null;
+let sessionExpiryTimeout = null;
 
 // --- WINDOW CREATION ---
 function createWindows() {
@@ -46,6 +68,127 @@ function createWindows() {
   `)}`,
   );
 
+  loadingWindow = new BrowserWindow({
+    width,
+    height,
+    x: 0,
+    y: 0,
+    backgroundColor: "#000000",
+    transparent: true,
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    kiosk: true,
+    webPreferences: { nodeIntegration: true },
+  });
+
+  loadingWindow.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(`
+    <style>
+      body {
+        margin: 0;
+        background: radial-gradient(circle at center, rgba(15, 23, 42, 0.92), rgba(7, 10, 15, 0.98));
+        backdrop-filter: blur(50px) saturate(200%);
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: 'Inter', system-ui, sans-serif;
+        overflow: hidden;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 40px;
+        position: relative;
+        z-index: 10;
+        animation: poppy-in 1s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+      }
+      @keyframes poppy-in {
+        from { transform: scale(0.9); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+      }
+      .spinner {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 4px solid transparent;
+        border-top-color: #3b82f6;
+        border-bottom-color: #3b82f6;
+        animation: spin 1.5s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        position: relative;
+        filter: drop-shadow(0 0 25px rgba(59, 130, 246, 0.8));
+      }
+      .spinner:before {
+        content: '';
+        position: absolute;
+        inset: -15px;
+        border-radius: 50%;
+        border: 1px solid #3b82f6;
+        opacity: 0.2;
+        animation: pulse-ring 2.5s ease-in-out infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulse-ring {
+        0%, 100% { transform: scale(1); opacity: 0.05; }
+        50% { transform: scale(1.4); opacity: 0.2; }
+      }
+      .status {
+        text-align: center;
+        margin-top: 15px;
+      }
+      h2 {
+        font-size: 42px;
+        font-weight: 900;
+        font-style: italic;
+        letter-spacing: -2px;
+        text-transform: uppercase;
+        margin: 0;
+        background: linear-gradient(to bottom, #fff, #94a3b8);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 0 30px rgba(255, 255, 255, 0.4));
+      }
+      p {
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.6em;
+        text-transform: uppercase;
+        color: #3b82f6;
+        opacity: 0.6;
+        margin: 12px 0 0;
+        filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.3));
+      }
+      /* Vignette Overlay */
+      .vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.6) 100%);
+        pointer-events: none;
+      }
+    </style>
+    <body>
+      <div class="vignette"></div>
+      <div class="container">
+        <div class="spinner"></div>
+        <div class="status">
+          <h2 id="status_text">INITIALIZING_PROTOCOL</h2>
+          <p>Protocol: Alpha Enforcement</p>
+        </div>
+      </div>
+      <script>
+        const statusText = document.getElementById('status_text');
+        setTimeout(() => statusText.innerText = "DEPLOYING_CAGE", 1200);
+        setTimeout(() => statusText.innerText = "KERNEL_ISOLATION_ACTIVE", 2500);
+        setTimeout(() => statusText.innerText = "SYSTEM_LOCKED", 3800);
+      </script>
+    </body>
+  `)}`,
+  );
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -63,10 +206,16 @@ function createWindows() {
 
   mainWindow.maximize();
   mainWindow.show();
-  mainWindow.loadURL("http://localhost:3000/auth");
+
+  if (app.isPackaged) {
+    mainWindow.loadURL("warden://app/auth.html");
+  } else {
+    mainWindow.loadURL("http://localhost:3000/auth");
+  }
 
   globalShortcut.register("CommandOrControl+Shift+X", () => {
-    if (sessionStartTime) {
+    if (sessionsStartTime) {
+      console.log(">>> [WARDEN] SAFE_EXIT_TRIGGERED: DISABLING_CAGE");
       releaseSystem();
     } else {
       app.quit();
@@ -147,6 +296,21 @@ ipcMain.handle("auth:logout", () => {
   return { success: true };
 });
 
+ipcMain.handle("system:open-file", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile"],
+    filters: [
+      { name: "Documents & Images", extensions: ["pdf", "jpg", "png", "webp", "jfif"] },
+    ],
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    // Convert path to file:// URL for proper loading in Electron
+    return pathToFileURL(result.filePaths[0]).toString();
+  }
+  return null;
+});
+
 // --- GOOGLE/URL LOGIN HELPERS ---
 ipcMain.handle("prepare-login", async (event, targetUrl) => {
   const wardenSession = mainWindow.webContents.session;
@@ -178,6 +342,10 @@ ipcMain.handle("prepare-login", async (event, targetUrl) => {
         !loginVerified
       ) {
         loginVerified = true;
+        // Auto-close on success to avoid manual overhead
+        if (loginWin && !loginWin.isDestroyed()) {
+          loginWin.close();
+        }
       }
     };
     wardenSession.cookies.on("changed", cookieHandler);
@@ -201,7 +369,7 @@ ipcMain.handle("prepare-url-login", async (event, targetUrl) => {
     // It forces Google/YT to skip the Passkey check and use the Password box.
     const userAgent = isGoogleOrYT
       ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) Gecko/20100101 Firefox/115.0"
-      : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+      : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
     const loginWin = new BrowserWindow({
       width: isGoogleOrYT ? 500 : 1000,
@@ -227,8 +395,13 @@ ipcMain.handle("prepare-url-login", async (event, targetUrl) => {
         details.cookie &&
         !details.removed &&
         (details.cookie.httpOnly || details.cookie.name.includes("SID"))
-      )
+      ) {
         loginActionDetected = true;
+        // Auto-close on successful handshake detection
+        if (loginWin && !loginWin.isDestroyed()) {
+          loginWin.close();
+        }
+      }
     };
 
     wardenSession.cookies.on("changed", cookieListener);
@@ -398,28 +571,73 @@ ipcMain.handle("get-performance-pulse", async () => {
 
 // --- WARDEN ENGINE ---
 ipcMain.on("engage-warden", (event, config) => {
-  sessionStartTime = Date.now();
+  // Clear any existing session first to be safe
+  if (sessionsStartTime) releaseSystem();
+
+  sessionsStartTime = Date.now();
   veilWindow.hide();
+  
+  // Show Loading Overlay immediately while site loads
+  loadingWindow.show();
+  loadingWindow.setAlwaysOnTop(true, "screen-saver", 10);
+  
   lastState = "focused";
   mainWindow.setKiosk(true);
   mainWindow.setAlwaysOnTop(true, "screen-saver", 2);
+  
   const userAgent =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  
+  // Start loading target site immediately
   mainWindow.loadURL(config.url, { userAgent });
-  mainWindow.webContents.once("dom-ready", () => {
-    setTimeout(() => {
+  
+  // Manage the 5s Loading Screen simultaneous with site loading
+  let domReady = false;
+  let timerExpired = false;
+
+  const checkFinish = () => {
+    if (domReady && timerExpired) {
+      if (!sessionsStartTime) return; // Aborted
+      loadingWindow.hide();
       veilWindow.show();
       veilWindow.setAlwaysOnTop(true, "screen-saver", 1);
       mainWindow.focus();
       startSurgicalWarden();
-    }, 3000);
+    }
+  };
+
+  mainWindow.webContents.once("dom-ready", () => {
+    domReady = true;
+    checkFinish();
   });
-  setTimeout(() => releaseSystem(), config.duration * 60 * 1000);
+
+  initializationTimeout = setTimeout(() => {
+    timerExpired = true;
+    checkFinish();
+    initializationTimeout = null;
+  }, 5000);
+
+  // Track the session expiry timeout
+  sessionExpiryTimeout = setTimeout(() => {
+    if (sessionsStartTime) releaseSystem();
+  }, config.duration * 60 * 1000);
 });
 
 function releaseSystem() {
-  if (sessionStartTime) {
-    const sessionMinutes = Math.round((Date.now() - sessionStartTime) / 60000);
+  // 1. CLEAR HEARTBEATS & LOOPS
+  if (wardenLoop) clearInterval(wardenLoop);
+  if (initializationTimeout) {
+    clearTimeout(initializationTimeout);
+    initializationTimeout = null;
+  }
+  if (sessionExpiryTimeout) {
+    clearTimeout(sessionExpiryTimeout);
+    sessionExpiryTimeout = null;
+  }
+
+  // 2. SAVE SESSION STATE
+  if (sessionsStartTime) {
+    const sessionMinutes = Math.round((Date.now() - sessionsStartTime) / 60000);
     const now = new Date();
     const todayDateOnly = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const timestamp = `${todayDateOnly} ${now.toTimeString().split(" ")[0]}`;
@@ -457,13 +675,31 @@ function releaseSystem() {
         },
       );
     });
-    sessionStartTime = null;
+    sessionsStartTime = null;
   }
-  if (wardenLoop) clearInterval(wardenLoop);
+
+  // 3. RESET WINDOWS HARD
   mainWindow.setKiosk(false);
   mainWindow.setAlwaysOnTop(false);
+  
+  // Explicitly reset veil state
+  veilWindow.setKiosk(false);
+  veilWindow.setAlwaysOnTop(false);
   veilWindow.hide();
-  mainWindow.loadURL("http://localhost:3000/dashboard");
+
+  // Reset loading window state
+  if (loadingWindow) {
+    loadingWindow.setKiosk(false);
+    loadingWindow.setAlwaysOnTop(false);
+    loadingWindow.hide();
+  }
+
+  // 4. RESTORE UI
+  if (app.isPackaged) {
+    mainWindow.loadURL("warden://app/dashboard.html");
+  } else {
+    mainWindow.loadURL("http://localhost:3000/dashboard");
+  }
 }
 
 function startSurgicalWarden() {
@@ -489,4 +725,56 @@ function startSurgicalWarden() {
   }, 200);
 }
 
-app.whenReady().then(createWindows);
+app.whenReady().then(() => {
+  // Protocol handler for 'warden://app/...' MUST be registered on the session window uses!
+  const customSession = session.fromPartition("persist:warden_session");
+  customSession.protocol.handle('warden', async (request) => {
+    try {
+      const url = new URL(request.url);
+      let pathname = url.pathname;
+      
+      // Default to auth.html if root
+      if (pathname === '/' || pathname === '') {
+        pathname = '/auth.html';
+      } else if (!require('path').extname(pathname)) {
+        // Automatically append .html for Next.js routes like /dashboard
+        pathname += '.html';
+      }
+      
+      const filePath = path.join(__dirname, '../out', decodeURIComponent(pathname));
+      
+      // Use fs to check existence before fetching to avoid throwing an error
+      if (require('fs').existsSync(filePath)) {
+        return await net.fetch(pathToFileURL(filePath).toString());
+      } else {
+        // Return a proper 404 response instead of failing
+        return new Response('Warden Protocol: File not found (' + pathname + ')', {
+          status: 404,
+          statusText: 'Not Found'
+        });
+      }
+    } catch (e) {
+      console.error("Warden protocol error:", e);
+      return new Response('Warden Protocol: Internal Error', { status: 500 });
+    }
+  });
+
+  createWindows();
+});
+
+// Quite when all windows are closed.
+app.on('window-all-closed', () => {
+  // On macOS it is common for applications and their menu bar
+  // to stay active until the user quits explicitly with Cmd + Q
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
+})
+
+app.on('activate', () => {
+  // On macOS it's common to re-create a window in the app when the
+  // dock icon is clicked and there are no other windows open.
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindows()
+  }
+})

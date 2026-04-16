@@ -1,6 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { LogIn, UserPlus, ArrowRight } from "lucide-react";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -8,15 +9,47 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const router = useRouter();
+
+  // AUTO-LOGIN: Check for existing session on mount
+  useEffect(() => {
+    const tryAutoLogin = async () => {
+      try {
+        const savedEmail = localStorage.getItem("warden_user_email");
+        const hasCookie = document.cookie.includes("warden_session_token=active");
+
+        if (savedEmail && hasCookie) {
+          const api = (window as any).electronAPI;
+          if (api) {
+            const result = await api.syncSession(savedEmail);
+            if (result?.success) {
+              router.push("/dashboard");
+              return; // Don't set checkingSession to false — we're navigating away
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Auto-login check failed:", err);
+      }
+      setCheckingSession(false);
+    };
+
+    tryAutoLogin();
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsAuthenticating(true);
     try {
       let result;
       // Using 'any' here to bypass the TypeScript Window interface check
-      const electron = (window as any).electronAPI;
+      const electron = (window as unknown as { electronAPI: { login: (credentials: { email: string; password: string }) => Promise<{ success: boolean; error?: string }>; signUp: (credentials: { email: string; password: string; username: string }) => Promise<{ success: boolean; error?: string }> } }).electronAPI;
+
+      // Add a slight artificial delay for the "sexy" loading effect
+      await new Promise(resolve => setTimeout(resolve, 1200));
 
       if (isLogin) {
         result = await electron.login({ email, password });
@@ -34,12 +67,19 @@ export default function AuthPage() {
         router.push("/dashboard");
       } else {
         setError(result?.error || "Authentication Failed");
+        setIsAuthenticating(false);
       }
     } catch (err) {
       console.error("IPC Bridge Error:", err);
       setError("System Connection Error");
+      setIsAuthenticating(false);
     }
   };
+
+  // Don't flash the login form while we check for an existing session
+  if (checkingSession) {
+    return <div className="min-h-[85vh]" />;
+  }
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center bg-transparent font-sans">
@@ -65,7 +105,7 @@ export default function AuthPage() {
                 className="flex-1 bg-transparent text-white outline-none placeholder:text-gray-800 text-lg"
                 placeholder="Enter username"
                 value={username}
-                onChange={(e: any) => setUsername(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
                 required
               />
             </div>
@@ -81,7 +121,7 @@ export default function AuthPage() {
               className="flex-1 bg-transparent text-white outline-none placeholder:text-gray-800 text-lg"
               placeholder="operator@system.com"
               value={email}
-              onChange={(e: any) => setEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               required
             />
           </div>
@@ -96,7 +136,7 @@ export default function AuthPage() {
               className="flex-1 bg-transparent text-white outline-none placeholder:text-gray-800 text-lg"
               placeholder="••••••••"
               value={password}
-              onChange={(e: any) => setPassword(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               required
             />
           </div>
@@ -107,15 +147,40 @@ export default function AuthPage() {
             </div>
           )}
 
-          <div className="pt-12">
+          <div className="pt-12 flex justify-center">
             <button
               type="submit"
-              className="w-full py-5 bg-blue-600 text-white rounded-full font-semibold text-base hover:bg-blue-500 transition-all shadow-xl shadow-blue-900/20 active:scale-[0.98]"
+              disabled={isAuthenticating}
+              className={`flex items-center gap-4 px-6 py-3 border border-transparent hover:border-white/5 hover:bg-white/5 rounded-sm transition-all duration-300 ${
+                isAuthenticating 
+                ? "text-neutral-600 cursor-wait" 
+                : "text-blue-500/60 hover:text-blue-400 group"
+              }`}
             >
-              {isLogin ? "Login" : "Sign Up"}
+              {isAuthenticating ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 border-2 border-neutral-600 border-t-white rounded-full animate-spin" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">Authenticating...</span>
+                </div>
+              ) : (
+                <>
+                  {isLogin ? <LogIn size={14} /> : <UserPlus size={14} />}
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    {isLogin ? "Access System" : "Create Account"}
+                  </span>
+                  <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform opacity-30" />
+                </>
+              )}
             </button>
           </div>
         </form>
+
+        <style jsx>{`
+          }
+          .animate-shimmer {
+            animation: shimmer 1.5s infinite;
+          }
+        `}</style>
 
         <div className="mt-10 text-center">
           <button
@@ -131,3 +196,4 @@ export default function AuthPage() {
     </div>
   );
 }
+ 

@@ -1,12 +1,25 @@
+const { app } = require("electron");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 
-// 1. Connection: This creates the warden.db file in your electron folder
-const dbPath = path.join(__dirname, "warden.db");
-const db = new sqlite3.Database(dbPath);
+// 1. Connection: This function ensures the database is created in a writable location
+let db;
+if (app.isReady()) {
+  initDB();
+} else {
+  app.whenReady().then(initDB);
+}
 
-// 2. The Blueprint Execution
-db.serialize(() => {
+function initDB() {
+  if (db) return;
+  const dbPath = path.join(app.getPath("userData"), "warden.db");
+  db = new sqlite3.Database(dbPath);
+  setupTables();
+}
+
+function setupTables() {
+  if (!db) return;
+  db.serialize(() => {
   // Enable Foreign Key support (SQLite needs this turned on explicitly)
   db.run("PRAGMA foreign_keys = ON");
 
@@ -63,6 +76,25 @@ db.serialize(() => {
   console.log(
     ">>> [DATABASE] All tables verified and relational links active."
   );
-});
+  });
+}
 
-module.exports = db;
+// Export a proxy so other modules can use db.run, db.get etc. without knowing it's lazy-loaded
+module.exports = {
+  run: (...args) => {
+    if (!db) initDB();
+    return db.run(...args);
+  },
+  get: (...args) => {
+    if (!db) initDB();
+    return db.get(...args);
+  },
+  all: (...args) => {
+    if (!db) initDB();
+    return db.all(...args);
+  },
+  serialize: (...args) => {
+    if (!db) initDB();
+    return db.serialize(...args);
+  }
+};
