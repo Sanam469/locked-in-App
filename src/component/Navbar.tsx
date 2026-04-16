@@ -19,7 +19,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const { theme } = useWardenTheme();
 
-  if (pathname === "/session") return null;
+  if (pathname === "/session" || pathname === "/auth") return null;
 
   const navItems = [
     {

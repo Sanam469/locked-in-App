@@ -21,7 +21,8 @@ export default function SettingsPage() {
     username: "loading...",
     email: "loading...",
   });
-
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
   useEffect(() => {
     const fetchProfileData = async () => {
       const api = (window as any).electronAPI;
@@ -40,8 +41,13 @@ export default function SettingsPage() {
   }, []);
 
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
       const electron = (window as any).electronAPI;
+      
+      // Delay to show the sexy terminal termination state
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
       if (electron?.logout) await electron.logout();
       document.cookie =
         "warden_session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
@@ -50,6 +56,7 @@ export default function SettingsPage() {
       router.push("/auth");
     } catch (err) {
       console.error("Logout error:", err);
+      setIsLoggingOut(false);
     }
   };
 
@@ -165,30 +172,28 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* LOGOUT ACTION */}
-        <div className="pt-12 border-t border-white/10 max-w-2xl">
+        {/* LOGOUT ACTION: Minimalist & Sleek Redesign */}
+        <div className="pt-12 flex justify-start items-center max-w-2xl">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-between p-6 border-2 border-red-500/10 hover:border-red-600 bg-red-500/5 hover:bg-red-600 transition-all group duration-300"
+            disabled={isLoggingOut}
+            className={`flex items-center gap-4 px-6 py-3 border border-transparent hover:border-white/5 hover:bg-white/5 rounded-sm transition-all duration-300 ${
+              isLoggingOut 
+              ? "text-neutral-600 cursor-wait" 
+              : "text-neutral-500 hover:text-red-500 group"
+            }`}
           >
-            <div className="flex items-center gap-6">
-              <LogOut
-                size={22}
-                className="text-red-500 group-hover:text-white transition-colors"
-              />
-              <div className="text-left">
-                <span className="block text-xs font-black text-white uppercase tracking-[0.4em]">
-                  Terminate Application Session
-                </span>
-                <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest group-hover:text-red-100 transition-colors">
-                  Logout and return to authentication gate
-                </span>
+            {isLoggingOut ? (
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 border-2 border-neutral-600 border-t-white rounded-full animate-spin" />
+                <span className="text-[10px] font-black uppercase tracking-[0.3em]">Logging out...</span>
               </div>
-            </div>
-            <ShieldCheck
-              size={20}
-              className="text-red-500/30 group-hover:text-white transition-all"
-            />
+            ) : (
+              <>
+                <LogOut size={14} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="text-[10px] font-black uppercase tracking-[0.3em]">Logout Session</span>
+              </>
+            )}
           </button>
         </div>
       </div>

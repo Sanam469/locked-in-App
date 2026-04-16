@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useWardenTheme } from "@/component/ThemeContext";
 import {
   Smartphone,
   Terminal,
@@ -12,9 +13,11 @@ import {
   Key,
   Globe,
   ChevronRight,
+  FolderSearch,
 } from "lucide-react";
 
 export default function DashboardPage() {
+  const { theme, isLocking, setIsLocking } = useWardenTheme();
   const [url, setUrl] = useState("");
   const [todayMinutes, setTodayMinutes] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
@@ -132,6 +135,18 @@ export default function DashboardPage() {
     }
   };
 
+  const handleFileSelection = async () => {
+    const api = (window as any).electronAPI;
+    if (api) {
+      setLogs((prev) => [...prev, ":: OPENING_NATIVE_FILE_PICKER..."]);
+      const filePath = await api.selectFile();
+      if (filePath) {
+        setUrl(filePath);
+        setLogs((prev) => [...prev, `:: LOCAL_FILE_STAGED: ${filePath.split('/').pop()}`]);
+      }
+    }
+  };
+
   const applyInertia = () => {
     if (!scrollRef.current || isDragging.current) return;
     velocity.current *= 0.95;
@@ -176,12 +191,30 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // AUTO-RESET AUTH ON URL CHANGE
+  useEffect(() => {
+    if (url.toLowerCase().startsWith("file:///")) {
+      setIsAuthenticated(true);
+    } else {
+      setIsAuthenticated(false);
+    }
+  }, [url]);
+
+  const [isEngaging, setIsEngaging] = useState(false);
+
   const handleInitialize = () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isEngaging) return;
+    setIsEngaging(true);
+    setIsLocking(true); // TRIGGER GLOBAL OVERLAY (Now covers the initial state)
+    setLogs((prev) => [...prev, ":: INITIALIZING_CORE_ISOLATION_SEQUENCE..."]);
+    
+    // START BACKEND IMMEDIATELY (Simultaneous Loading)
     setIsLocked(true);
+    setIsEngaging(false);
     setSecondsLeft(minutes * 60);
     const api = (window as any).electronAPI;
     if (api) api.engage({ url, duration: minutes });
+    setLogs((prev) => [...prev, ":: LOCKDOWN_PROTOCOL_ENGAGED"]);
   };
 
   const formatTime = (totalSeconds: number) => {
@@ -201,7 +234,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="max-w-[1440px] mx-auto min-h-screen px-10 pt-12 pb-32 animate-pageIn select-none">
+    <div className="max-w-[1440px] mx-auto min-h-screen px-10 pt-12 pb-32 animate-pageIn">
       <section className="pb-12">
         <div className="flex justify-between items-end mb-4">
           <div className="space-y-1">
@@ -219,7 +252,7 @@ export default function DashboardPage() {
             {todayMinutes} MINS ENFORCED
           </div>
         </div>
-        <div className="h-1.5 w-full bg-slate-200 border dynamic-border rounded-full overflow-hidden">
+        <div className="h-1.5 w-full bg-slate-200/20 border dynamic-border rounded-full overflow-hidden">
           <div
             className="h-full bg-blue-600 transition-all duration-1000"
             style={{ width: `${progressPercent}%` }}
@@ -321,17 +354,26 @@ export default function DashboardPage() {
           </h4>
 
           <div className="max-w-2xl space-y-16">
-            <div className="border-b dynamic-border pb-2 focus-within:border-blue-600 transition-all max-w-lg">
+            <div className="relative z-20 border-b dynamic-border pb-2 focus-within:border-blue-600 transition-all max-w-lg">
               <label className="text-[9px] font-black text-blue-600 uppercase tracking-[0.5em] block mb-2">
                 Target Session URL
               </label>
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="HTTPS://LEETCODE.COM/..."
-                className="bg-transparent text-lg font-mono font-bold w-full outline-none text-slate-900 placeholder:text-slate-300"
-              />
+              <div className="flex items-center gap-4">
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="HTTPS://LEETCODE.COM/..."
+                  className="bg-transparent text-lg font-mono font-bold w-full outline-none text-slate-900 placeholder:text-slate-300"
+                />
+                <button 
+                  onClick={handleFileSelection}
+                  className="p-2 hover:bg-white/5 rounded-sm transition-colors group/file text-slate-400 hover:text-blue-600"
+                  title="Open Local File (PDF/Image)"
+                >
+                  <FolderSearch size={20} className="transition-transform group-hover/file:scale-110" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-12 gap-8 items-center bg-transparent py-4">
@@ -397,7 +439,7 @@ export default function DashboardPage() {
             {/* ACTION ZONE */}
             <div
               className={`pt-10 border-t border-[var(--line-color)] space-y-8 transition-all duration-700 ${
-                url.toLowerCase().startsWith("https://")
+                url.toLowerCase().startsWith("https://") || url.toLowerCase().startsWith("file://")
                   ? "opacity-100"
                   : "opacity-20 grayscale pointer-events-none"
               }`}
@@ -530,13 +572,15 @@ export default function DashboardPage() {
                     <ChevronRight size={12} className="text-slate-800" />
                   </button>
                 </div>
-                {/* ENGAGE BUTTON: UNTOUCHED PER INSTRUCTION */}
+                {/* ENGAGE BUTTON: Premium Polish */}
                 <button
                   onClick={handleInitialize}
-                  disabled={!isAuthenticated || isLocked}
-                  className={`group relative w-70 h-full min-h-[140px] transition-all duration-500 border-2 flex flex-col items-center justify-center gap-2 ${
-                    isAuthenticated && !isLocked
+                  disabled={!isAuthenticated || isLocked || isEngaging}
+                  className={`group relative w-70 h-full min-h-[140px] transition-all duration-500 border-2 flex flex-col items-center justify-center gap-2 overflow-hidden ${
+                    isAuthenticated && !isLocked && !isEngaging
                       ? "bg-transparent border-green-600 shadow-[0_0_30px_rgba(22,163,74,0.15)] hover:bg-green-600"
+                      : isEngaging
+                      ? "bg-green-900/20 border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]"
                       : "bg-slate-900/50 border-white/5 cursor-not-allowed grayscale"
                   }`}
                   style={{
@@ -544,35 +588,53 @@ export default function DashboardPage() {
                       "polygon(0 0, 92% 0, 100% 20%, 100% 100%, 8% 100%, 0 80%)",
                   }}
                 >
-                  <Zap
-                    size={24}
-                    className={`transition-all duration-500 ${
-                      isAuthenticated && !isLocked
-                        ? "text-green-500 group-hover:text-white animate-pulse"
-                        : "text-slate-800"
-                    }`}
-                  />
-                  <div className="text-center">
-                    <span
-                      className={`block text-[11px] font-black uppercase tracking-[0.6em] ${
-                        isAuthenticated && !isLocked
-                          ? "text-green-500 group-hover:text-white"
-                          : "text-slate-700"
-                      }`}
-                    >
-                      {isLocked ? "LOCKDOWN ACTIVE" : "ENGAGE PROTOCOL"}
-                    </span>
-                    <span
-                      className={`text-[8px] font-bold uppercase tracking-widest mt-1 block ${
-                        isAuthenticated && !isLocked
-                          ? "text-green-500/50 group-hover:text-white/50"
-                          : "text-slate-800"
-                      }`}
-                    >
-                      Clearance Level 4 Verified
-                    </span>
-                  </div>
-                  {isAuthenticated && !isLocked && (
+                  {isEngaging ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="tech-spinner scale-150 mb-2" />
+                      <div className="text-center relative z-10 animate-pulse">
+                        <span className="block text-[11px] font-black uppercase tracking-[0.6em] text-white">
+                          INITIALIZING_HUD
+                        </span>
+                        <span className="text-[8px] font-bold uppercase tracking-widest mt-1 block text-white/50">
+                          Establishing Secure Handshake
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Zap
+                        size={24}
+                        className={`transition-all duration-500 ${
+                          (isAuthenticated && !isLocked)
+                            ? "text-green-500 group-hover:text-white animate-pulse"
+                            : "text-slate-800"
+                        }`}
+                      />
+                      <div className="text-center relative z-10">
+                        <span
+                          className={`block text-[11px] font-black uppercase tracking-[0.6em] transition-all duration-500 ${
+                            (isAuthenticated && !isLocked)
+                              ? "text-green-500 group-hover:text-white"
+                              : "text-slate-700"
+                          }`}
+                        >
+                          {isLocked ? "LOCKDOWN ACTIVE" : "ENGAGE PROTOCOL"}
+                        </span>
+                        <span
+                          className={`text-[8px] font-bold uppercase tracking-widest mt-1 block ${
+                            (isAuthenticated && !isLocked)
+                              ? "text-green-500/50 group-hover:text-white/50"
+                              : "text-slate-800"
+                          }`}
+                        >
+                          Clearance Level 4 Verified
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ACTIVE SCANLINE */}
+                  {isAuthenticated && !isLocked && !isEngaging && (
                     <div className="absolute top-0 left-0 w-full h-[2px] bg-green-400/30 animate-scanline pointer-events-none" />
                   )}
                 </button>
@@ -590,20 +652,27 @@ export default function DashboardPage() {
           scrollbar-width: none;
         }
         @keyframes scanline {
-          0% {
-            top: 0%;
-            opacity: 0;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            top: 100%;
-            opacity: 0;
-          }
+          0% { top: 0%; opacity: 0; }
+          50% { opacity: 1; }
+          100% { top: 100%; opacity: 0; }
+        }
+        @keyframes scanline-fast {
+          0% { top: 0%; opacity: 0; }
+          50% { opacity: 1; }
+          100% { top: 100%; opacity: 0; }
+        }
+        @keyframes ping-slow {
+          0% { transform: scale(1); opacity: 0.8; }
+          100% { transform: scale(1.5); opacity: 0; }
         }
         .animate-scanline {
           animation: scanline 3s linear infinite;
+        }
+        .animate-scanline-fast {
+          animation: scanline-fast 0.5s linear infinite;
+        }
+        .animate-ping-slow {
+          animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
         }
       `}</style>
     </div>

@@ -6,11 +6,17 @@ type Theme = "cobalt" | "warden";
 const ThemeContext = createContext({
   theme: "cobalt" as Theme,
   toggleTheme: () => {},
+  isSyncing: false,
+  setIsSyncing: (val: boolean) => {},
+  isLocking: false,
+  setIsLocking: (val: boolean) => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // 1. Initialize from localStorage if it exists, otherwise default to cobalt
   const [theme, setTheme] = useState<Theme>("cobalt");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLocking, setIsLocking] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -31,7 +37,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   if (!isLoaded) return <div className="bg-[#0b0b0e] min-h-screen" />;
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, isSyncing, setIsSyncing, isLocking, setIsLocking }}>
       <div className={`theme-${theme}`}>{children}</div>
     </ThemeContext.Provider>
   );
