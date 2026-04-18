@@ -20,17 +20,51 @@ export default function DashboardPage() {
   const { theme, isLocking, setIsLocking } = useWardenTheme();
   const [url, setUrl] = useState("");
   const [todayMinutes, setTodayMinutes] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<{ msg: string; type: "info" | "success" | "error" }[]>([
+    { msg: "SYSTEM_READY: KERNEL_UPLINK_STABLE", type: "info" }
+  ]);
   const [minutes, setMinutes] = useState(60);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [recentPaths, setRecentPaths] = useState<{ target_site: string }[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+  const lastLoggedUrl = useRef("");
+  const lastLoggedMinutes = useRef(60);
   const lastX = useRef(0);
   const velocity = useRef(0);
   const rafId = useRef<number | null>(null);
+  const terminalEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [logs]);
+
+  const logMessage = (msg: string, type: "info" | "success" | "error" = "info") => {
+    setLogs((prev) => [...prev.slice(-6), { msg: `:: ${msg}`, type }]);
+  };
+
+  const parseLog = (text: string, type: "info" | "success" | "error") => {
+    const parts = text.split(/([:_|\s])/);
+    return parts.map((part, i) => {
+      const upper = part.toUpperCase();
+      const isStatusSuccess = ["SUCCESS", "VERIFIED", "STABLE", "ENGAGED", "RESTORED", "READY", "ACTIVE", "STAGED", "ENFORCED"].some(k => upper.includes(k));
+      const isStatusError = ["ERROR", "FAILURE", "REJECTED", "ABORTED", "CRITICAL", "BREACHED"].some(k => upper.includes(k));
+      const isProtocol = ["SYSTEM", "ENGINE", "PROTOCOL", "BYPASS", "SOCKET", "KERNEL", "AUTH", "WARDEN"].some(k => upper.includes(k));
+
+      if (isStatusSuccess) return <span key={i} className="text-[#4EC9B0]">{part}</span>;
+      if (isStatusError) return <span key={i} className="text-[#F44747]">{part}</span>;
+      if (isProtocol) return <span key={i} className="text-[#DCDCAA] font-black">{part}</span>;
+      
+      return <span key={i} className="opacity-80">{part}</span>;
+    });
+  };
 
   // ADD THIS INSIDE YOUR DashboardPage COMPONENT
   useEffect(() => {
@@ -49,7 +83,7 @@ export default function DashboardPage() {
           await api.saveSessionData({
             actual_minutes: 1, // Add 1 minute to the total
             start_time: localTimestamp,
-            target_site: getDomain(url),
+            target_site: url, // USE FULL URL
             goal_minutes: minutes,
             status: "SUCCESS",
           });
@@ -76,23 +110,17 @@ export default function DashboardPage() {
         if (result?.success) {
           setTodayMinutes(result.minutes || 0);
         }
+        
+        if (api.getRecentPaths) {
+          const nodesResult = await api.getRecentPaths();
+          if (nodesResult?.success) {
+            setRecentPaths(nodesResult.nodes || []);
+          }
+        }
       }
     };
 
     initAndFetchStats();
-
-    const logInterval = setInterval(() => {
-      const msgs = [
-        "ENFORCING_COBALT_CAGE",
-        "ENCRYPTION_LAYER_STABLE",
-        "MONITORING_THREAD_PRIORITY",
-        "UPLINK_VERIFIED",
-      ];
-      setLogs((prev) => [
-        ...prev.slice(-2),
-        `:: ${msgs[Math.floor(Math.random() * msgs.length)]}`,
-      ]);
-    }, 4000);
 
     let timerInterval: NodeJS.Timeout;
     if (isLocked && secondsLeft > 0) {
@@ -102,35 +130,54 @@ export default function DashboardPage() {
       );
     }
     return () => {
-      clearInterval(logInterval);
       clearInterval(timerInterval);
     };
   }, [isLocked, secondsLeft]);
 
   const handleLoginPreparation = async () => {
-    if (url.trim() === "") return alert("PLEASE INPUT TARGET URL FIRST");
-    setLogs((prev) => [...prev, ":: INITIALIZING_GOOGLE_AUTH..."]);
+    if (url.trim() === "") {
+      logMessage("AUTH_ERROR: TARGET URL REQUIRED", "error");
+      return alert("PLEASE INPUT TARGET URL FIRST");
+    }
+    logMessage(`ENGINE_INIT: ${getDomain(url)} | ${minutes} MIN`);
+    logMessage("INITIALIZING_GOOGLE_AUTH...");
     const api = (window as any).electronAPI;
     if (api) {
-      const success = await api.prepareLogin(url);
-      if (success) {
-        setIsAuthenticated(true);
-        setLogs((prev) => [...prev, ":: GOOGLE_SESSION_VERIFIED"]);
+      try {
+        const success = await api.prepareLogin(url);
+        if (success) {
+          setIsAuthenticated(true);
+          logMessage("GOOGLE_SESSION_VERIFIED", "success");
+        } else {
+          logMessage("AUTH_ABORTED: USER_CANCELLED", "error");
+        }
+      } catch (err: any) {
+        logMessage(`AUTH_CRITICAL_FAILURE: ${err.message}`, "error");
       }
     }
   };
 
   const handleUrlLogin = async () => {
-    if (url.trim() === "") return alert("PLEASE INPUT TARGET URL FIRST");
-    setLogs((prev) => [...prev, ":: INITIALIZING_TARGET_HANDSHAKE..."]);
+    if (url.trim() === "") {
+      logMessage("HANDSHAKE_ERROR: TARGET URL REQUIRED", "error");
+      return alert("PLEASE INPUT TARGET URL FIRST");
+    }
+    logMessage(`ENGINE_INIT: ${getDomain(url)} | ${minutes} MIN`);
+    logMessage(`INITIALIZING_HANDSHAKE: ${getDomain(url)}`);
     const api = (window as any).electronAPI;
     if (api) {
-      const success = await api.prepareUrlLogin(url);
-      if (success === true) {
-        setIsAuthenticated(true);
-      } else {
-        setIsAuthenticated(false);
-        alert("Login failed. You must stay logged in to engage the cage.");
+      try {
+        const success = await api.prepareUrlLogin(url);
+        if (success === true) {
+          setIsAuthenticated(true);
+          logMessage("SOCKET_HANDSHAKE_STABLE", "success");
+        } else {
+          setIsAuthenticated(false);
+          logMessage("HANDSHAKE_REJECTED: AUTH_MISSING", "error");
+          alert("Login failed. You must stay logged in to engage the cage.");
+        }
+      } catch (err: any) {
+        logMessage(`SOCKET_CRITICAL_ERROR: ${err.message}`, "error");
       }
     }
   };
@@ -138,11 +185,17 @@ export default function DashboardPage() {
   const handleFileSelection = async () => {
     const api = (window as any).electronAPI;
     if (api) {
-      setLogs((prev) => [...prev, ":: OPENING_NATIVE_FILE_PICKER..."]);
-      const filePath = await api.selectFile();
-      if (filePath) {
-        setUrl(filePath);
-        setLogs((prev) => [...prev, `:: LOCAL_FILE_STAGED: ${filePath.split('/').pop()}`]);
+      logMessage("OPENING_NATIVE_FILE_PICKER...");
+      try {
+        const filePath = await api.selectFile();
+        if (filePath) {
+          setUrl(filePath);
+          logMessage(`LOCAL_FILE_STAGED: ${filePath.split('/').pop()}`, "success");
+        } else {
+          logMessage("FILE_PICKER_ACTION_CANCELLED", "info");
+        }
+      } catch (err: any) {
+        logMessage(`FS_ERROR: ${err.message}`, "error");
       }
     }
   };
@@ -200,21 +253,34 @@ export default function DashboardPage() {
     }
   }, [url]);
 
+  // Track Theme Changes
+  useEffect(() => {
+    logMessage(`SYSTEM_THEME_SWAP: ${theme.toUpperCase()} ACTIVE`);
+  }, [theme]);
+
   const [isEngaging, setIsEngaging] = useState(false);
 
   const handleInitialize = () => {
     if (!isAuthenticated || isEngaging) return;
     setIsEngaging(true);
-    setIsLocking(true); // TRIGGER GLOBAL OVERLAY (Now covers the initial state)
-    setLogs((prev) => [...prev, ":: INITIALIZING_CORE_ISOLATION_SEQUENCE..."]);
+    setIsLocking(true); // TRIGGER GLOBAL OVERLAY
+    logMessage("INITIALIZING_CORE_ISOLATION_SEQUENCE...");
     
     // START BACKEND IMMEDIATELY (Simultaneous Loading)
     setIsLocked(true);
     setIsEngaging(false);
     setSecondsLeft(minutes * 60);
     const api = (window as any).electronAPI;
-    if (api) api.engage({ url, duration: minutes });
-    setLogs((prev) => [...prev, ":: LOCKDOWN_PROTOCOL_ENGAGED"]);
+    if (api) {
+      try {
+        api.engage({ url, duration: minutes });
+        logMessage("LOCKDOWN_PROTOCOL_ENGAGED", "success");
+      } catch (err: any) {
+        logMessage(`ENGINE_ABORT: ${err.message}`, "error");
+        setIsLocked(false);
+        setIsLocking(false);
+      }
+    }
   };
 
   const formatTime = (totalSeconds: number) => {
@@ -226,10 +292,12 @@ export default function DashboardPage() {
   const progressPercent = Math.min((todayMinutes / 360) * 100, 100);
 
   const getDomain = (inputUrl: string) => {
+    if (!inputUrl) return "NONE";
+    if (inputUrl.startsWith("file:///")) return "LOCAL_FILE";
     try {
       return new URL(inputUrl).hostname.toUpperCase();
     } catch {
-      return "TARGET SITE";
+      return inputUrl.length > 20 ? inputUrl.substring(0, 20) + "..." : inputUrl;
     }
   };
 
@@ -262,85 +330,98 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-12 gap-0 border-t dynamic-border">
         {/* CLEAN SIDEBAR */}
-        <aside className="col-span-12 lg:col-span-3 pr-10 border-r dynamic-border pt-12 space-y-16">
-          <div className="space-y-10 text-xs font-bold uppercase">
-            <h3 className="text-sm font-black text-slate-400 tracking-[0.3em]">
-              Hardware Health
-            </h3>
-            <div className="flex justify-between text-slate-900">
-              <span>Kernel</span>
-              <span className="text-blue-600">Stable</span>
-            </div>
-            <div className="flex justify-between text-slate-900">
-              <span>Status</span>
-              <div className="flex items-center gap-2 text-green-600">
-                <div className="w-1.5 h-1.5 bg-green-600 rounded-full"></div>
-                <span>Active</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4 pt-10 border-t dynamic-border">
+        <aside className="col-span-12 lg:col-span-3 pr-10 border-r dynamic-border pt-12 space-y-12">
+          {/* RECENT PATHS: SLEEK CHIPS */}
+          <div className="space-y-6">
             <div className="flex items-center gap-3">
-              <Smartphone size={18} className="text-blue-600" />
-              <span className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">
-                Mobile Cage
-              </span>
+              <Globe size={14} className="text-blue-600" />
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">
+                Recent Paths
+              </h3>
             </div>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest leading-relaxed">
-              Under maintainace - will be avaiable soon
-            </p>
+            
+            <div className="flex flex-col gap-3">
+              {recentPaths.length > 0 ? recentPaths.map((node, i) => (
+                <button 
+                  key={i}
+                  onClick={() => {
+                    setUrl(node.target_site);
+                    logMessage(`TARGET_RESTORED: ${getDomain(node.target_site)}`, "info");
+                  }}
+                  className="w-full px-6 py-5 bg-white border-b border-zinc-100 last:border-0 hover:bg-zinc-50/50 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] transition-all flex flex-col gap-1.5 group animate-pageIn text-left overflow-hidden relative first:rounded-t-2xl last:rounded-b-2xl"
+                  style={{ animationDelay: `${i * 100}ms` }}
+                >
+                  {/* Ultra-Sleek Left Bar */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-950 scale-y-0 group-hover:scale-y-100 transition-transform origin-top duration-300" />
+
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-950 group-hover:text-blue-600 transition-colors">
+                      {getDomain(node.target_site)}
+                    </span>
+                    <div className="p-1 rounded-full bg-zinc-50 group-hover:bg-blue-50 transition-colors">
+                       <ChevronRight size={10} className="text-zinc-300 group-hover:text-blue-600 transition-colors" />
+                    </div>
+                  </div>
+                  
+                  <span className="text-[11px] font-medium text-zinc-500 leading-tight truncate w-full group-hover:text-zinc-800 transition-colors">
+                    {node.target_site}
+                  </span>
+                </button>
+              )) : (
+                <div className="w-full py-12 px-8 border border-dashed border-zinc-200 rounded-3xl text-center bg-zinc-50/20">
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.4em]">
+                    Standby For Data
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <section className="pt-10 border-t border-[var(--line-color)]">
-            <div className="flex items-center justify-between mb-6">
+          {/* ENGINE CONSOLE: COMPACT & FLOATING */}
+          <section className="space-y-6">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Terminal size={14} className="text-blue-600 relative z-10" />
-                  <div className="absolute inset-0 bg-blue-600/20 blur-sm rounded-full animate-pulse" />
-                </div>
-                <span className="text-[10px] text-slate-400 uppercase tracking-[0.4em] font-black">
-                  Kernel Output
+                <Terminal size={14} className="text-blue-600" />
+                <span className="text-[10px] text-slate-500 uppercase tracking-[0.4em] font-black">
+                  Engine Console
                 </span>
               </div>
-              {/* Live Status Indicator */}
-              <div className="flex items-center gap-2">
-                <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">
-                  Live Feed
-                </span>
-                <div className="w-1 h-1 bg-green-600 rounded-full animate-ping" />
+              <div className="flex items-center gap-1.5">
+                <div className="w-1 h-1 bg-red-600 rounded-full animate-pulse" />
+                <span className="text-[8px] font-black text-red-600 uppercase tracking-tighter">Live</span>
               </div>
             </div>
 
-            {/* THE SEXY TERMINAL BOX */}
             <div className="relative group">
-              {/* Background Glass Layer */}
-              <div className="absolute -inset-2 bg-gradient-to-b from-blue-600/5 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              {/* VS CODE THEME TERMINAL: INTEGRATED LOOK (NO HOVER SHADOW) */}
+              <div className="relative h-72 bg-[#1e1e1e] border-2 border-[#2d2d2d] rounded-xl p-8 shadow-2xl overflow-hidden flex flex-col font-mono transition-colors duration-500">
+                {/* Header Dots */}
+                <div className="flex gap-1.5 mb-6 opacity-30">
+                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                </div>
 
-              <div className="relative bg-black/40 backdrop-blur-md border border-white/5 rounded-sm p-7 w-62 overflow-hidden">
-                {/* Subtle Scanline Effect */}
-                <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.02),rgba(0,255,0,0.01),rgba(0,0,255,0.02))] bg-[length:100%_4px,3px_100%] opacity-20" />
-
-                <div className="font-mono text-[9px] space-y-3 uppercase font-bold relative z-10">
+                <div className="text-[11px] space-y-5 uppercase font-bold relative z-10 overflow-y-auto no-scrollbar">
                   {logs.map((log, i) => (
-                    <div key={i} className="flex gap-3 items-start group/line">
-                      <span className="text-red-600/40 select-none">
-                        [{i + 104}]
+                    <div 
+                      key={i} 
+                      className="flex gap-4 items-start group/line animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both"
+                    >
+                      <span className="text-[#555] select-none text-[9px] mt-1 text-right w-6">
+                        {i + 1}
                       </span>
-                      <p
-                        className={`leading-relaxed transition-colors duration-300 ${
-                          i === logs.length - 1
-                            ? "text-green-600 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)]"
-                            : "text-slate-500 group-hover/line:text-slate-300"
-                        }`}
+                      <div
+                        className={`leading-relaxed transition-colors duration-300 font-mono tracking-tight text-[#DCDCAA]/90`}
                       >
-                        {log}
+                        {parseLog(log.msg, log.type)}
                         {i === logs.length - 1 && (
-                          <span className="inline-block w-1.5 h-3 ml-1 bg-green-600 animate-pulse align-middle" />
+                          <span className="inline-block w-1.5 h-4 ml-1 bg-[#DCDCAA] animate-pulse align-middle" />
                         )}
-                      </p>
+                      </div>
                     </div>
                   ))}
+                  <div ref={terminalEndRef} />
                 </div>
               </div>
             </div>
@@ -448,7 +529,10 @@ export default function DashboardPage() {
               <div
                 onClick={() => {
                   if (url.toLowerCase().startsWith("https://") && !isLocked) {
-                    setIsAuthenticated(!isAuthenticated);
+                    const newState = !isAuthenticated;
+                    setIsAuthenticated(newState);
+                    logMessage(`PROTOCOL_BYPASS_${newState ? "ENGAGED" : "RELEASED"}`, newState ? "success" : "info");
+                    logMessage(`TARGET: ${getDomain(url)} | DURATION: ${minutes} MIN`);
                   }
                 }}
                 className="flex items-center gap-6 cursor-pointer group w-fit select-none"
