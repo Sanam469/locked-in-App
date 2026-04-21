@@ -38,6 +38,7 @@ let lastState = "focused";
 let sessionsStartTime = null;
 let initializationTimeout = null;
 let sessionExpiryTimeout = null;
+let activeSessionUrl = "Warden_Focus_Session";
 
 // --- WINDOW CREATION ---
 function createWindows() {
@@ -443,6 +444,25 @@ ipcMain.handle("get-daily-stats", async () => {
   });
 });
 
+ipcMain.handle("get-recent-paths", async () => {
+  return new Promise((resolve) => {
+    if (!global.currentUserId) return resolve({ success: true, nodes: [] });
+    // This query gets the latest single occurrence of each site visited by the user
+    const query = `
+      SELECT target_site, MAX(start_time) as last_visited
+      FROM sessions 
+      WHERE user_id = ? AND target_site NOT LIKE 'file://%'
+      GROUP BY target_site 
+      ORDER BY last_visited DESC 
+      LIMIT 3
+    `;
+    db.all(query, [global.currentUserId], (err, rows) => {
+      if (err) return resolve({ success: false, error: err.message });
+      resolve({ success: true, nodes: rows || [] });
+    });
+  });
+});
+
 ipcMain.handle("get-performance-pulse", async () => {
   return new Promise((resolve) => {
     if (!global.currentUserId)
@@ -570,12 +590,56 @@ ipcMain.handle("get-performance-pulse", async () => {
 });
 
 // --- WARDEN ENGINE ---
+ipcMain.handle("save-session-data", async (event, data) => {
+  return new Promise((resolve) => {
+    if (!global.currentUserId) return resolve({ success: false });
+    const todayDateOnly = new Date().toISOString().split("T")[0];
+    
+    db.get(
+      "SELECT session_id FROM sessions WHERE user_id = ? AND substr(start_time, 1, 10) = ? AND target_site = ?",
+      [global.currentUserId, todayDateOnly, data.target_site],
+      (err, row) => {
+        if (row) {
+          db.run(
+            "UPDATE sessions SET actual_minutes = actual_minutes + ? WHERE session_id = ?",
+            [data.actual_minutes, row.session_id],
+            () => resolve({ success: true })
+          );
+        } else {
+          db.run(
+            `INSERT INTO sessions (user_id, target_site, actual_minutes, goal_minutes, status, start_time) VALUES (?, ?, ?, ?, 'SUCCESS', ?)`,
+            [
+              global.currentUserId,
+              data.target_site,
+              data.actual_minutes,
+              data.goal_minutes,
+              data.start_time
+            ],
+            () => resolve({ success: true })
+          );
+        }
+      }
+    );
+  });
+});
+
 ipcMain.on("engage-warden", (event, config) => {
   // Clear any existing session first to be safe
   if (sessionsStartTime) releaseSystem();
 
   sessionsStartTime = Date.now();
+  activeSessionUrl = config.url || "Warden_Focus_Session";
   veilWindow.hide();
+
+  // INSTANT PERSISTENCE: Create a session entry immediately so it shows in "Recent Paths" right away
+  if (global.currentUserId) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const timestamp = `${todayStr} ${new Date().toTimeString().split(" ")[0]}`;
+    db.run(
+      `INSERT INTO sessions (user_id, target_site, actual_minutes, goal_minutes, status, start_time) VALUES (?, ?, ?, ?, 'SUCCESS', ?)`,
+      [global.currentUserId, activeSessionUrl, 0, config.duration || 120, timestamp]
+    );
+  }
   
   // Show Loading Overlay immediately while site loads
   loadingWindow.show();
@@ -666,7 +730,7 @@ function releaseSystem() {
               `INSERT INTO sessions (user_id, target_site, actual_minutes, goal_minutes, status, start_time) VALUES (?, ?, ?, ?, 'SUCCESS', ?)`,
               [
                 global.currentUserId,
-                "Warden_Focus_Session",
+                activeSessionUrl,
                 sessionMinutes,
                 120,
                 timestamp,

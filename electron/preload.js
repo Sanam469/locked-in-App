@@ -27,4 +27,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // LOCAL FILE SUPPORT
   selectFile: () => ipcRenderer.invoke("system:open-file"),
+  
+  // STATS
+  getRecentPaths: () => ipcRenderer.invoke("get-recent-paths"),
+  saveSessionData: (data) => ipcRenderer.invoke("save-session-data", data),
 });
