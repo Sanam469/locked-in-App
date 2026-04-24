@@ -14,15 +14,15 @@ const { pathToFileURL } = require('url');
 
 // Register the scheme as privileged (this helps with fetch and other web features)
 protocol.registerSchemesAsPrivileged([
-  { 
-    scheme: 'warden', 
-    privileges: { 
-      standard: true, 
-      secure: true, 
+  {
+    scheme: 'warden',
+    privileges: {
+      standard: true,
+      secure: true,
       supportFetchAPI: true,
       bypassCSP: true,
       corsEnabled: true
-    } 
+    }
   }
 ]);
 
@@ -39,6 +39,38 @@ let sessionsStartTime = null;
 let initializationTimeout = null;
 let sessionExpiryTimeout = null;
 let activeSessionUrl = "Warden_Focus_Session";
+
+// --- INPUT BLOCKERS ---
+const inputBlocker = (event, input) => {
+  // Allow Ctrl+Shift+X (Safe Exit) bypassing
+  if (input.control && input.shift && input.key.toLowerCase() === "x") {
+    return; // Let the global shortcut handle it
+  }
+
+  // Block Copy, Paste, Cut
+  if (input.control && ["c", "v", "x"].includes(input.key.toLowerCase())) {
+    event.preventDefault();
+  }
+
+  // Block Reloads (Ctrl+R, F5)
+  if ((input.control && input.key.toLowerCase() === "r") || input.key === "F5") {
+    event.preventDefault();
+  }
+
+  // Block DevTools (Ctrl+Shift+I, F12)
+  if ((input.control && input.shift && input.key.toLowerCase() === "i") || input.key === "F12") {
+    event.preventDefault();
+  }
+
+  // Block Alt+Arrow Navigation
+  if (input.alt && (input.key === "ArrowLeft" || input.key === "ArrowRight")) {
+    event.preventDefault();
+  }
+};
+
+const contextMenuBlocker = (event) => {
+  event.preventDefault();
+};
 
 // --- WINDOW CREATION ---
 function createWindows() {
@@ -378,7 +410,7 @@ ipcMain.handle("prepare-url-login", async (event, targetUrl) => {
       parent: mainWindow,
       modal: true,
       show: true,
-      webPreferences: { 
+      webPreferences: {
         session: wardenSession,
         nodeIntegration: false,
         contextIsolation: true,
@@ -406,7 +438,7 @@ ipcMain.handle("prepare-url-login", async (event, targetUrl) => {
     };
 
     wardenSession.cookies.on("changed", cookieListener);
-    
+
     loginWin.webContents.on("did-start-navigation", () => {
       loginWin.webContents.executeJavaScript(
         `try { Object.defineProperty(navigator.__proto__, 'webdriver', {get: () => undefined}); } catch(e) {}`,
@@ -594,7 +626,7 @@ ipcMain.handle("save-session-data", async (event, data) => {
   return new Promise((resolve) => {
     if (!global.currentUserId) return resolve({ success: false });
     const todayDateOnly = new Date().toISOString().split("T")[0];
-    
+
     db.get(
       "SELECT session_id FROM sessions WHERE user_id = ? AND substr(start_time, 1, 10) = ? AND target_site = ?",
       [global.currentUserId, todayDateOnly, data.target_site],
@@ -640,21 +672,25 @@ ipcMain.on("engage-warden", (event, config) => {
       [global.currentUserId, activeSessionUrl, 0, config.duration || 120, timestamp]
     );
   }
-  
+
   // Show Loading Overlay immediately while site loads
   loadingWindow.show();
   loadingWindow.setAlwaysOnTop(true, "screen-saver", 10);
-  
+
   lastState = "focused";
   mainWindow.setKiosk(true);
   mainWindow.setAlwaysOnTop(true, "screen-saver", 2);
-  
+
   const userAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-  
+
+  // Attach input blockers for the warden cage
+  mainWindow.webContents.on('before-input-event', inputBlocker);
+  mainWindow.webContents.on('context-menu', contextMenuBlocker);
+
   // Start loading target site immediately
   mainWindow.loadURL(config.url, { userAgent });
-  
+
   // Manage the 5s Loading Screen simultaneous with site loading
   let domReady = false;
   let timerExpired = false;
@@ -743,9 +779,11 @@ function releaseSystem() {
   }
 
   // 3. RESET WINDOWS HARD
+  mainWindow.webContents.removeListener('before-input-event', inputBlocker);
+  mainWindow.webContents.removeListener('context-menu', contextMenuBlocker);
   mainWindow.setKiosk(false);
   mainWindow.setAlwaysOnTop(false);
-  
+
   // Explicitly reset veil state
   veilWindow.setKiosk(false);
   veilWindow.setAlwaysOnTop(false);
@@ -785,7 +823,7 @@ function startSurgicalWarden() {
         veilWindow.setAlwaysOnTop(true, "screen-saver", 1);
         mainWindow.focus();
       }
-    } catch (e) {}
+    } catch (e) { }
   }, 200);
 }
 
@@ -796,7 +834,7 @@ app.whenReady().then(() => {
     try {
       const url = new URL(request.url);
       let pathname = url.pathname;
-      
+
       // Default to auth.html if root
       if (pathname === '/' || pathname === '') {
         pathname = '/auth.html';
@@ -804,9 +842,9 @@ app.whenReady().then(() => {
         // Automatically append .html for Next.js routes like /dashboard
         pathname += '.html';
       }
-      
+
       const filePath = path.join(__dirname, '../out', decodeURIComponent(pathname));
-      
+
       // Use fs to check existence before fetching to avoid throwing an error
       if (require('fs').existsSync(filePath)) {
         return await net.fetch(pathToFileURL(filePath).toString());

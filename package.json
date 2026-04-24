@@ -2,6 +2,12 @@
   "name": "locked-in",
   "version": "0.1.0",
   "private": true,
+  "description": "A productivity tool that locks you in to your work.",
+  "author": "Sanam469",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sanam469/locked-in-App.git"
+  },
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
@@ -26,6 +32,7 @@
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
     "electron": "^28.2.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.2",
     "tailwindcss": "^4",
