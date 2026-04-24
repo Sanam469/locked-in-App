@@ -11,6 +11,7 @@ const {
 } = require("electron");
 const path = require("path");
 const { pathToFileURL } = require('url');
+const fs = require('fs');
 
 // Register the scheme as privileged (this helps with fetch and other web features)
 protocol.registerSchemesAsPrivileged([
